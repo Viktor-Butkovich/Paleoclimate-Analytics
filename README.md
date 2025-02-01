@@ -15,3 +15,5 @@ Involve data collection from a web API - space or job data?
             Can cite various planetary science, climate science papers, especially for climate datasets
 Involve AWS - Bedrock, free student account, etc.
 Can always look at UC Irvine, Kaggle, etc. datasets
+
+Make sure to cite paleoclimate database and Holocene_temperature.pdf paper
