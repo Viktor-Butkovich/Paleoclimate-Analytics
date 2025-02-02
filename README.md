@@ -17,3 +17,5 @@ Involve AWS - Bedrock, free student account, etc.
 Can always look at UC Irvine, Kaggle, etc. datasets
 
 Make sure to cite paleoclimate database and Holocene_temperature.pdf paper
+
+Note - Tableau public does not allow direct database connections, so any database/data warehouse setup will need to be connected to an Excel file first

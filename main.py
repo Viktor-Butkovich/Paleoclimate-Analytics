@@ -1,23 +1,31 @@
 # %%
 # Imports
-from typing import Dict, Any
+from data_types import Temp12k_data
 import matplotlib.pyplot as plt
 import pickle as pkl
 import polars as pl
 import json
 import pprint
+import sqlite3
+import pyodbc
 
 # %%
 # Read in the data - basic Exploratory Data Analysis (EDA)
-data: Dict[str, Any] = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
+data: Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
 # The data has "TS" and "D" sections
+json.dump(data["TS"][0], open("Data/example_ts_sample.json", "w"))
+json.dump(
+    data["D"][next(iter(data["D"].keys()))], open("Data/example_d_sample.json", "w")
+)
+# A D sample seems to have a collection of data types (temperature, age, depth, material, sensorSpecies, etc.) - tracks all variables over time from a particular study
+# A TS sample seems to have a single data type (temperature, depth, etc.) paired with age - tracks a single variable over time from a particular study
+# For our purposes, we should isolate the TS samples that contain relevant data types
 
-
-example_sample = data["TS"][0]
-json.dump(example_sample, open("Data/example_sample.json", "w"))
-# Sample 0 is a series of samples from ages 950 to 19,130 years BP (Before Present)
+# TS Sample 0 is a series of samples from ages 950 to 19,130 years BP (Before Present)
 #   The sample has geographic metadata for the sample location
 #   The main part of the sample is how sediment depth has changed over time (Not temperature)
+
+# D Sample 0 is a collection of data types (temperature, age, depth, material, sensorSpecies, etc.), including the depth data from TS Sample 0
 
 temperature_data = []
 units = set()
@@ -32,14 +40,14 @@ print("Unique units:", units)
 json.dump(temperature_data, open("Data/temperature_data.json", "w"))
 
 pprint.pprint(temperature_data[0])
-print(f"len(temperature_data) samples include degC or kelvin temperature data")
+print(f"{len(temperature_data)} samples include degC or kelvin temperature data")
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
 # As shown in the below plot, this sample was taken near the east coast of the Arabian Peninsula
 
 # %%
 # Plot the temperature time series of the first sample
-plot_temperature = True
+plot_temperature = False
 if plot_temperature:
     # Collect the temperature data from the first sample
     temperature = temperature_data[0].get("paleoData_values")
@@ -63,7 +71,7 @@ if plot_temperature:
 
 # %%
 # Plot the geolocation of the samples
-plot_locations = True
+plot_locations = False
 if plot_locations:
     # Collect the latitudes and longitudes of each sample from temperature_data
     import matplotlib.image as mpimg
@@ -101,4 +109,64 @@ if plot_locations:
     # Note Northern-hemisphere bias in number of samples - be cautious of this during analysis
     # We have enough data points for even a scatter plot to resemble a world map
 
+# %%
+conn_str = (
+    "DRIVER={ODBC Driver 17 for SQL Server};"
+    "SERVER=(LocalDB)\\MSSQLLocalDB;"
+    "DATABASE=Temp12k;"
+    "Trusted_Connection=yes;"
+)  # Use the connection string for your local SQL Server instance
+
+conn = pyodbc.connect(conn_str, timeout=5)
+cursor = conn.cursor()
+cursor.execute("DROP TABLE IF EXISTS TS_Sample")
+cursor.execute(
+    """
+    BEGIN
+        CREATE TABLE TS_Sample (
+            TS_Sample_Id INT PRIMARY KEY,
+            Sample_Data NVARCHAR(MAX),
+            Other_Sample_Data NVARCHAR(MAX)
+        )
+    END
+"""
+)
+cursor.execute(
+    """
+    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
+    VALUES (1, 500, 1000)
+"""
+)
+cursor.execute(
+    """
+    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
+    VALUES (2, 1000, 2000)
+"""
+)
+cursor.execute(
+    """
+    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
+    VALUES (3, 1200, 3000)
+"""
+)
+cursor.execute(
+    """
+    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
+    VALUES (4, 1300, 4000)
+"""
+)
+cursor.execute(
+    """
+    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
+    VALUES (5, 1400, 8000)
+"""
+)
+cursor.execute("SELECT * FROM TS_Sample")
+rows = cursor.fetchall()
+
+for row in rows:
+    print(row)
+cursor.close()
+conn.commit()
+conn.close()
 # %%
