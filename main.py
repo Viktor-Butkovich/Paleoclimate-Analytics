@@ -1,17 +1,15 @@
 # %%
 # Imports
-from data_types import Temp12k_data
+from modules import data_types, db
 import matplotlib.pyplot as plt
 import pickle as pkl
 import polars as pl
 import json
 import pprint
-import sqlite3
-import pyodbc
 
 # %%
 # Read in the data - basic Exploratory Data Analysis (EDA)
-data: Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
+data: data_types.Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
 # The data has "TS" and "D" sections
 json.dump(data["TS"][0], open("Data/example_ts_sample.json", "w"))
 json.dump(
@@ -110,63 +108,71 @@ if plot_locations:
     # We have enough data points for even a scatter plot to resemble a world map
 
 # %%
-conn_str = (
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=(LocalDB)\\MSSQLLocalDB;"
-    "DATABASE=Temp12k;"
-    "Trusted_Connection=yes;"
-)  # Use the connection string for your local SQL Server instance
+db.connect()
+db.drop_table("TS_Sample")
+db.create_table(
+    "TS_Sample",
+    {
+        "TS_Sample_Id": "INT PRIMARY KEY",
+        "Sample_Data": "INT",
+        "Other_Sample_Data": "INT",
+        "Last_Sample_Data": "INT",
+    },
+)
+db.insert(
+    "TS_Sample",
+    {
+        "TS_Sample_Id": 1,
+        "Sample_Data": 1000,
+        "Other_Sample_Data": 1000,
+        "Last_Sample_Data": 1000,
+    },
+)
+print(db.read_table("TS_Sample"))
 
-conn = pyodbc.connect(conn_str, timeout=5)
-cursor = conn.cursor()
-cursor.execute("DROP TABLE IF EXISTS TS_Sample")
-cursor.execute(
-    """
-    BEGIN
-        CREATE TABLE TS_Sample (
-            TS_Sample_Id INT PRIMARY KEY,
-            Sample_Data NVARCHAR(MAX),
-            Other_Sample_Data NVARCHAR(MAX)
-        )
-    END
-"""
+sample_df = pl.read_database("SELECT * FROM TS_Sample", db.conn)
+sample_df.extend(
+    pl.DataFrame(
+        {
+            "TS_Sample_Id": [2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "Sample_Data": [1600, 1700, 1800, 1900, 2000, 100, 500, 1000, 3000],
+            "Other_Sample_Data": [
+                10000,
+                11000,
+                12000,
+                13000,
+                14000,
+                1000,
+                1200,
+                1500,
+                3000,
+            ],
+            "Last_Sample_Data": [
+                10000,
+                11000,
+                12000,
+                13000,
+                14000,
+                1000,
+                1200,
+                1500,
+                3000,
+            ],
+        },
+    )
 )
-cursor.execute(
-    """
-    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
-    VALUES (1, 500, 1000)
-"""
-)
-cursor.execute(
-    """
-    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
-    VALUES (2, 1000, 2000)
-"""
-)
-cursor.execute(
-    """
-    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
-    VALUES (3, 1200, 3000)
-"""
-)
-cursor.execute(
-    """
-    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
-    VALUES (4, 1300, 4000)
-"""
-)
-cursor.execute(
-    """
-    INSERT INTO TS_Sample (TS_Sample_Id, Sample_Data, Other_Sample_Data)
-    VALUES (5, 1400, 8000)
-"""
-)
-cursor.execute("SELECT * FROM TS_Sample")
-rows = cursor.fetchall()
+sample_df.write_database("TS_Sample", db.conn, if_table_exists="replace")
+# 2 methods to insert into the database
 
-for row in rows:
-    print(row)
-cursor.close()
-conn.commit()
-conn.close()
-# %%
+print(sample_df)
+print(db.read_table("TS_Sample"))
+db.insert(
+    "TS_Sample",
+    {
+        "TS_Sample_Id": 11,
+        "Sample_Data": 5000,
+        "Other_Sample_Data": 5000,
+        "Last_Sample_Data": 5000,
+    },
+)
+db.close()
