@@ -216,8 +216,6 @@ if plot_locations:
 
 # %%
 # Write the temperature data to the SQL Server database
-average_degC = temperature_df["degC"].mean()
-print(f"Average degC: {average_degC}")
 update_db = True
 if update_db:
     db.connect()
@@ -240,3 +238,4 @@ if update_db:
     db.close()
 
 # %%
+# Maybe clean data by using difference from today's average, rather than absolute amount - we care more about time variance than absolute amount
