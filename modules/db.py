@@ -35,5 +35,5 @@ def read_table(table_name: str):
 
 connect()
 server_name = conn.exec_driver_sql("SELECT @@SERVERNAME").fetchone()[0]
-print(f"Server Name: {server_name}")
+print(f"Connected to SQL server: {server_name}")
 close()

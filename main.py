@@ -42,18 +42,17 @@ for sample in data["TS"]:
                 num_data_points += 1
                 # Convert age (years BP) to a date (assuming current year is 1950 for BP conversion)
                 if age != "nan" and temperature != "nan":
-                    if int(age) <= 30000:  # Only consider 30k bp and more recent
-                        temperature_data.append(
-                            {
-                                "temperature_id": num_data_points,
-                                "sample_id": num_samples,
-                                "age": age,
-                                "degC": temperature,
-                                "geo_meanLat": sample.get("geo_meanLat"),
-                                "geo_meanLon": sample.get("geo_meanLon"),
-                            }
-                        )
-                        ages.append(age)
+                    temperature_data.append(
+                        {
+                            "temperature_id": num_data_points,
+                            "sample_id": num_samples,
+                            "year": 1950 - int(age),
+                            "degC": temperature,
+                            "geo_meanLat": sample.get("geo_meanLat"),
+                            "geo_meanLon": sample.get("geo_meanLon"),
+                        }
+                    )
+                    ages.append(age)
         else:
             missing_ages += 1
     # According to original paper, any records that aren't units degC, variable name temperature are not calibrated
@@ -74,6 +73,16 @@ print(
 # %%
 # Convert temperature data to a Polars DataFrame
 temperature_df = pl.DataFrame(temperature_data)
+# Remove temperature outliers that are more than 1.5 IQR away
+q1 = temperature_df["degC"].quantile(0.25)
+q3 = temperature_df["degC"].quantile(0.75)
+iqr = q3 - q1
+lower_bound = q1 - 1.5 * iqr
+upper_bound = q3 + 1.5 * iqr
+
+temperature_df = temperature_df.filter(
+    (temperature_df["degC"] >= lower_bound) & (temperature_df["degC"] <= upper_bound)
+)
 print(temperature_df)
 
 # %%
@@ -150,23 +159,25 @@ if plot_locations:
 
 # %%
 # Write the temperature data to the SQL Server database
-db.connect()
-db.drop_table("TS_Sample")
-db.create_table(
-    "TS_Sample",
-    {
-        "temperature_id": "INT PRIMARY KEY",
-        "sample_id": "INT",
-        "age": "INT",
-        "degC": "FLOAT",
-        "geo_meanLat": "FLOAT",
-        "geo_meanLon": "FLOAT",
-    },
-)
+update_db = True
+if update_db:
+    db.connect()
+    db.drop_table("TS_Sample")
+    db.create_table(
+        "TS_Sample",
+        {
+            "temperature_id": "INT PRIMARY KEY",
+            "sample_id": "INT",
+            "year": "INT",
+            "degC": "FLOAT",
+            "geo_meanLat": "FLOAT",
+            "geo_meanLon": "FLOAT",
+        },
+    )
 
-temperature_df.head(300).write_database("TS_Sample", db.conn, if_table_exists="replace")
-# 2 methods to insert into the database
+    temperature_df.write_database("TS_Sample", db.conn, if_table_exists="replace")
+    # 2 methods to insert into the database
 
-db.close()
+    db.close()
 
 # %%
