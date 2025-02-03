@@ -27,21 +27,54 @@ json.dump(
 
 temperature_data = []
 units = set()
+missing_ages = 0
+num_samples = 0
+num_data_points = 0
+ages = []
 for sample in data["TS"]:
     units.add(sample.get("paleoData_units"))
-    if sample.get("paleoData_units") in ["degC", "kelvin"]:
-        temperature_data.append(sample)
-
+    if sample.get("paleoData_units") == "degC":
+        if sample.get("age"):
+            num_samples += 1
+            for age, temperature in zip(
+                sample.get("age"), sample.get("paleoData_values")
+            ):
+                num_data_points += 1
+                # Convert age (years BP) to a date (assuming current year is 1950 for BP conversion)
+                if age != "nan" and temperature != "nan":
+                    if int(age) <= 30000:  # Only consider 30k bp and more recent
+                        temperature_data.append(
+                            {
+                                "temperature_id": num_data_points,
+                                "sample_id": num_samples,
+                                "age": age,
+                                "degC": temperature,
+                                "geo_meanLat": sample.get("geo_meanLat"),
+                                "geo_meanLon": sample.get("geo_meanLon"),
+                            }
+                        )
+                        ages.append(age)
+        else:
+            missing_ages += 1
+    # According to original paper, any records that aren't units degC, variable name temperature are not calibrated
+    #   C37.concentration: set of compounds produced by algae, used to estimate past sea surface temperatures
+print("Samples missing ages:", missing_ages)
 print("Unique units:", units)
+print("Oldest age:", max(ages))
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
 #   We want to find samples regarding temperature
 json.dump(temperature_data, open("Data/temperature_data.json", "w"))
-
-pprint.pprint(temperature_data[0])
-print(f"{len(temperature_data)} samples include degC or kelvin temperature data")
+print(
+    f"{num_samples} samples include degC temperature data, resulting in {len(temperature_data)} time series data points"
+)
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
 # As shown in the below plot, this sample was taken near the east coast of the Arabian Peninsula
+
+# %%
+# Convert temperature data to a Polars DataFrame
+temperature_df = pl.DataFrame(temperature_data)
+print(temperature_df)
 
 # %%
 # Plot the temperature time series of the first sample
@@ -64,6 +97,10 @@ if plot_temperature:
     ax.grid(True)
     ax.invert_xaxis()  # Invert the x-axis to show farther ages on the left
     plt.show()
+
+    # Save the plot to an image file
+    fig.savefig("Data/sample_0_temperature_time_series.png")
+
     # The temperature data is noisy, but it shows a general trend of decreasing temperature over time
     #   The temperature data is in degrees Celsius, and the ages are in years Before Present (BP)
 
@@ -104,75 +141,32 @@ if plot_locations:
     ax.set_ylim(-90, 90)  # Set the bounds for latitude
     ax.grid(True)
     plt.show()
+
+    # Save the plot to an image file
+    fig.savefig("Data/sample_locations.png")
+
     # Note Northern-hemisphere bias in number of samples - be cautious of this during analysis
     # We have enough data points for even a scatter plot to resemble a world map
 
 # %%
+# Write the temperature data to the SQL Server database
 db.connect()
 db.drop_table("TS_Sample")
 db.create_table(
     "TS_Sample",
     {
-        "TS_Sample_Id": "INT PRIMARY KEY",
-        "Sample_Data": "INT",
-        "Other_Sample_Data": "INT",
-        "Last_Sample_Data": "INT",
+        "temperature_id": "INT PRIMARY KEY",
+        "sample_id": "INT",
+        "age": "INT",
+        "degC": "FLOAT",
+        "geo_meanLat": "FLOAT",
+        "geo_meanLon": "FLOAT",
     },
 )
-db.insert(
-    "TS_Sample",
-    {
-        "TS_Sample_Id": 1,
-        "Sample_Data": 1000,
-        "Other_Sample_Data": 1000,
-        "Last_Sample_Data": 1000,
-    },
-)
-print(db.read_table("TS_Sample"))
 
-sample_df = pl.read_database("SELECT * FROM TS_Sample", db.conn)
-sample_df.extend(
-    pl.DataFrame(
-        {
-            "TS_Sample_Id": [2, 3, 4, 5, 6, 7, 8, 9, 10],
-            "Sample_Data": [1600, 1700, 1800, 1900, 2000, 100, 500, 1000, 3000],
-            "Other_Sample_Data": [
-                10000,
-                11000,
-                12000,
-                13000,
-                14000,
-                1000,
-                1200,
-                1500,
-                3000,
-            ],
-            "Last_Sample_Data": [
-                10000,
-                11000,
-                12000,
-                13000,
-                14000,
-                1000,
-                1200,
-                1500,
-                3000,
-            ],
-        },
-    )
-)
-sample_df.write_database("TS_Sample", db.conn, if_table_exists="replace")
+temperature_df.head(300).write_database("TS_Sample", db.conn, if_table_exists="replace")
 # 2 methods to insert into the database
 
-print(sample_df)
-print(db.read_table("TS_Sample"))
-db.insert(
-    "TS_Sample",
-    {
-        "TS_Sample_Id": 11,
-        "Sample_Data": 5000,
-        "Other_Sample_Data": 5000,
-        "Last_Sample_Data": 5000,
-    },
-)
 db.close()
+
+# %%

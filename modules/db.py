@@ -32,3 +32,8 @@ def insert(table_name: str, values: dict):
 
 def read_table(table_name: str):
     return conn.exec_driver_sql(f"SELECT * FROM {table_name}").fetchall()
+
+connect()
+server_name = conn.exec_driver_sql("SELECT @@SERVERNAME").fetchone()[0]
+print(f"Server Name: {server_name}")
+close()
