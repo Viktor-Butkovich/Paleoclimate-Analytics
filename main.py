@@ -6,6 +6,8 @@ import pickle as pkl
 import polars as pl
 import json
 import pprint
+import numpy as np
+from sklearn.utils import resample
 
 # %%
 # Read in the data - basic Exploratory Data Analysis (EDA)
@@ -47,9 +49,9 @@ for sample in data["TS"]:
                             "temperature_id": num_data_points,
                             "sample_id": num_samples,
                             "year": 1950 - int(age),
-                            "degC": temperature,
-                            "geo_meanLat": sample.get("geo_meanLat"),
-                            "geo_meanLon": sample.get("geo_meanLon"),
+                            "degC": float(temperature),
+                            "geo_meanLat": float(sample.get("geo_meanLat")),
+                            "geo_meanLon": float(sample.get("geo_meanLon")),
                         }
                     )
                     ages.append(age)
@@ -84,6 +86,61 @@ temperature_df = temperature_df.filter(
     (temperature_df["degC"] >= lower_bound) & (temperature_df["degC"] <= upper_bound)
 )
 print(temperature_df)
+print(lower_bound, upper_bound)
+max_degC = temperature_df["degC"].max()
+print(f"Maximum degC: {max_degC}")
+
+# %%
+# Function to resample coordinates to evenly distribute latitudes and longitudes
+
+allow_resample = False
+# Re-sampling takes the median latitude from 43 (very biased) to 6 (slightly biased)
+# Similarly, longitude changes from to -2 to 6
+#   Initial data has notable Northwest Hemisphere bias
+if allow_resample:
+    # Separate latitudes into bins of 10 degrees each
+    latitude_bins = np.arange(-90, 100, 10)
+    latitude_bin_expr = pl.when(pl.col("geo_meanLat") < latitude_bins[0]).then(
+        latitude_bins[0] - 10
+    )
+    for i in range(len(latitude_bins) - 1):
+        latitude_bin_expr = latitude_bin_expr.when(
+            (pl.col("geo_meanLat") >= latitude_bins[i])
+            & (pl.col("geo_meanLat") < latitude_bins[i + 1])
+        ).then(latitude_bins[i])
+    latitude_bin_expr = latitude_bin_expr.otherwise(latitude_bins[-1])
+
+    temperature_df = temperature_df.with_columns(
+        latitude_bin_expr.alias("latitude_bin")
+    )
+
+    # Count the number of samples in each bin
+    bin_counts = (
+        temperature_df.group_by(["latitude_bin"]).agg(pl.len()).sort("latitude_bin")
+    )
+    max_bin_count = max(bin_counts["len"])
+    resampled_data = []
+
+    for bin_value in latitude_bins:
+        bin_data = temperature_df.filter(pl.col("latitude_bin") == bin_value)
+        if len(bin_data) > 0:
+            resampled_bin_data = resample(
+                bin_data.to_pandas(), n_samples=max_bin_count, replace=True
+            )
+            resampled_data.append(pl.DataFrame(resampled_bin_data))
+
+    temperature_df = pl.concat(resampled_data)
+    temperature_df = temperature_df.drop("latitude_bin")
+    print(temperature_df)
+
+# %%
+# Optionally analyze only data in a specific area
+allow_sector = False
+if allow_sector:
+    temperature_df = temperature_df.filter(
+        (temperature_df["geo_meanLat"] >= 20) & (temperature_df["geo_meanLat"] <= 80)
+    )
+    print(temperature_df)
 
 # %%
 # Plot the temperature time series of the first sample
@@ -159,6 +216,8 @@ if plot_locations:
 
 # %%
 # Write the temperature data to the SQL Server database
+average_degC = temperature_df["degC"].mean()
+print(f"Average degC: {average_degC}")
 update_db = True
 if update_db:
     db.connect()
