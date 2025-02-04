@@ -1,6 +1,6 @@
 # %%
 # Imports
-from modules import data_types, db
+from modules import data_types, db, modern_temperature
 import matplotlib.pyplot as plt
 import pickle as pkl
 import polars as pl
@@ -86,7 +86,9 @@ temperature_df = temperature_df.filter(
     (temperature_df["degC"] >= lower_bound) & (temperature_df["degC"] <= upper_bound)
 )
 print(temperature_df)
-print(lower_bound, upper_bound)
+print(
+    f"Filtering outliers beyond ({lower_bound}, {upper_bound}) - check if these are the correct units"
+)
 max_degC = temperature_df["degC"].max()
 print(f"Maximum degC: {max_degC}")
 
@@ -239,3 +241,5 @@ if update_db:
 
 # %%
 # Maybe clean data by using difference from today's average, rather than absolute amount - we care more about time variance than absolute amount
+# Also check the month metadata of each sample if it is provided, and show that instead
+# Make sure temperature API works for different months as expected in MO
