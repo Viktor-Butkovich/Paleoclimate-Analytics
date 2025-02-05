@@ -2,7 +2,6 @@ import netCDF4 as nc
 import numpy as np
 import warnings
 import os
-import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=UserWarning)
 if os.getcwd().endswith(
@@ -73,6 +72,9 @@ def get_climate(lat, lon):
 
 
 def get_weighted_global_average_climate():
+    # Latitudes and longitudes are not proportional to surface area.
+    # To get a more accurate representation of the Earth's surface, we need to account for the cosine of the latitude.
+    # This is because the distance between lines of longitude decreases as you move towards the poles.
     latitudes = np.arange(-90, 91, 1)
     weights = np.cos(np.radians(latitudes))
     weighted_sum = 0
@@ -104,60 +106,6 @@ def get_anomaly_when(lat, lon, year, month_idx=None):
         return float(np.mean(month_time_series))
     else:
         return get_anomaly_when_month(lat, lon, year, month_idx)
-
-
-def apply_get_anomaly_when(args):
-    return float(
-        np.mean(
-            [
-                get_anomaly_when_month(
-                    args["geo_meanLat"], args["geo_meanLon"], args["year"], month_idx
-                )
-                for month_idx in range(12)
-            ]
-        )
-    )
-
-
-def apply_climate(args):
-    print(args)
-    print(get_climate(args["latitude"], args["longitude"]))
-    return get_climate(args["latitude"], args["longitude"])
-
-
-# Latitudes and longitudes are not proportional to surface area.
-# To get a more accurate representation of the Earth's surface, we need to account for the cosine of the latitude.
-# This is because the distance between lines of longitude decreases as you move towards the poles.
-
-
-def calculations():
-    recalculate = False
-    if recalculate:
-        weighted_average_climate = get_weighted_global_average_climate()
-    else:
-        weighted_average_climate = 14.231
-    print(weighted_average_climate)
-
-    climates = [
-        get_average_temperature(lat, long)
-        for lat, long in zip(range(-90, 91, 1), range(-180, 181, 1))
-    ]
-
-    year_time_series = []
-    years = range(1850, 2025)
-    for year in years:
-        averages = []
-        print("analyzing", year)
-        for lat, lon in zip(range(-90, 91, 25), range(-180, 181, 25)):
-            averages.append(get_temperature_when(lat, lon, year))
-        year_time_series.append(np.mean(averages) + weighted_average_climate)
-
-    plt.plot(years, year_time_series, marker="o")
-    plt.xlabel("Year")
-    plt.ylabel("Average Temperature (°C)")
-    plt.title("Yearly Average Temperature from 1850 through 2024")
-    plt.grid(True)
-    plt.show()
 
 
 # Reference https://berkeleyearth.org/data/ for dataset

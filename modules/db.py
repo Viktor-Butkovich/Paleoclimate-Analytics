@@ -11,6 +11,13 @@ engine: sqlalchemy.Engine = None
 conn: sqlalchemy.Connection = None
 
 
+def table_exists(table_name: str) -> bool:
+    result = conn.exec_driver_sql(
+        f"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{table_name}'"
+    ).fetchone()
+    return result[0] > 0
+
+
 def connect():
     global engine, conn
     engine = sqlalchemy.create_engine(f"mssql+pyodbc:///?odbc_connect={conn_str}")

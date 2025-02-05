@@ -163,4 +163,5 @@ cython_debug/
 *.xlsx
 *.csv
 *.pkl
+*.pbix
 Data/*

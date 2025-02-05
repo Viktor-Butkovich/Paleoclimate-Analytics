@@ -6,10 +6,14 @@ import pickle as pkl
 import polars as pl
 import json
 import pprint
+import warnings
 import numpy as np
+import os
 
 # %%
 # Read in the data
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 data: data_types.Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
 # The data has "TS" and "D" sections
 json.dump(data["TS"][0], open("Data/example_ts_sample.json", "w"))
@@ -53,9 +57,7 @@ month_indexes = {
 }
 temperature_data = []
 units = set()
-missing_ages = 0
 num_samples = 0
-num_data_points = 0
 ages = []
 outliers = []
 rewritten_samples = []
@@ -66,9 +68,7 @@ def include_sample(sample: data_types.Temp12k_TS_sample) -> bool:
         return False
     elif sample.get("paleoData_useInGlobalTemperatureAnalysis", "TRUE") == "FALSE":
         return False
-    elif abs(float(sample.get("geo_meanLat"))) > 70:
-        return False
-    elif "DELETE" in sample.get("paleoDate_QCnotes", ""):
+    elif "DELETE" in sample.get("paleoData_QCnotes", ""):
         return False
     elif sample.get("age", None) == None:
         return False
@@ -122,25 +122,22 @@ for sample in data["TS"]:
                 if not "T anomalies" in sample.get("paleoData_description", ""):
                     if most_recent_year >= 1850:
                         if month_idx == None:
-                            most_recent_anomaly = (
-                                modern_temperature.get_anomaly_when(
-                                    lat, lon, most_recent_year
-                                )
-                                - climate
+                            most_recent_anomaly = modern_temperature.get_anomaly_when(
+                                lat, lon, most_recent_year
                             )
                         else:
                             most_recent_anomaly = (
                                 modern_temperature.get_anomaly_when_month(
                                     lat, lon, most_recent_year, month_idx
                                 )
-                                - climate
                             )
                     else:
-                        most_recent_anomaly = 0
+                        most_recent_anomaly = modern_temperature.get_anomaly_when(
+                            lat, lon, 1850
+                        )
                     # Add most recent temperature to each data point, such that the most recent temperature is assumed to be the modern average
                     #   Thus, even if the most recent temperature is different from the modern average (local variation, error), we still get an accurate anomaly vs age
         for age, temperature in zip(sample["age"], sample["paleoData_values"]):
-            num_data_points += 1
             # Convert age (years BP) to a date (assuming current year is 1950 for BP conversion)
             if age != "nan" and temperature != "nan":
                 diff = float(temperature) - most_recent_temperature
@@ -150,7 +147,6 @@ for sample in data["TS"]:
                 temperature = climate + anomaly
                 temperature_data.append(
                     {
-                        "temperature_id": num_data_points,
                         "sample_id": num_samples,
                         "year": round(
                             most_recent_year - (float(age) - most_recent_age)
@@ -166,11 +162,8 @@ for sample in data["TS"]:
         if abs(temperature_data[-1]["anomaly"]) > 20:
             sample["anomaly"] = anomalies
             rewritten_samples.append(sample)
-        else:
-            missing_ages += 1
     # According to original paper, any records that aren't units degC, variable name temperature are not calibrated
     #   C37.concentration: set of compounds produced by algae, used to estimate past sea surface temperatures
-print("Samples missing ages:", missing_ages)
 print("Unique units:", units)
 print("Oldest age:", max(ages))
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
@@ -206,112 +199,121 @@ print(f"Maximum degC: {max_degC}")
 
 # %%
 # Add recent climate data (since 1850)
-array_data = modern_temperature.modern_temperature_grid.variables["temperature"][:]
-# Get the dimensions
-months, latitudes, longitudes = array_data.shape
-print(array_data.shape)
-# Create arrays for month, latitude, and longitude
-total_elements = months * latitudes * longitudes
-indices = np.arange(total_elements)
+recompute = False
+if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
+    array_data = modern_temperature.modern_temperature_grid.variables["temperature"][:]
+    # Get the dimensions
+    months, latitudes, longitudes = array_data.shape
 
-# Calculate the original indices
-month_array = indices // (latitudes * longitudes)
-latitude_array = (indices % (latitudes * longitudes)) // longitudes
-longitude_array = indices % longitudes
+    # Create arrays for month, latitude, and longitude
+    total_elements = months * latitudes * longitudes
+    indices = np.arange(total_elements)
 
-# Flatten the 3-dimensional array into a 1-dimensional array
-flattened_array = array_data.flatten()
+    # Calculate the original indices
+    month_array = indices // (latitudes * longitudes)
+    latitude_array = ((indices % (latitudes * longitudes)) // longitudes) - 89
+    longitude_array = (indices % longitudes) - 179
 
-flattened_array: np.ma.masked_array = flattened_array
+    # Flatten the 3-dimensional array into a 1-dimensional array
+    flattened_array = array_data.flatten()
 
-filled_array = flattened_array.filled(np.nan)
+    flattened_array: np.ma.masked_array = flattened_array
 
-# Replace NaN values with the item at the index 1555200 indexes later
-nan_indices = np.where(np.isnan(filled_array))[0]
-for idx in reversed(nan_indices):
-    filled_array[idx] = filled_array[idx + 1555200]
+    filled_array = flattened_array.filled(np.nan)
 
-print(filled_array)
+    # Replace NaN values with the item at the index 1555200 indexes later
+    nan_indices = np.where(np.isnan(filled_array))[0]
+    for idx in reversed(nan_indices):
+        filled_array[idx] = filled_array[idx + 1555200]
 
-# Create a Polars DataFrame
-df = pl.DataFrame(
-    {
-        "month": month_array,
-        "geo_meanLat": latitude_array,
-        "geo_meanLon": longitude_array,
-        "anomaly": filled_array,
-    }
-)
+    # Create a Polars DataFrame
+    modern_temperature_df = pl.DataFrame(
+        {
+            "month": month_array,
+            "geo_meanLat": latitude_array,
+            "geo_meanLon": longitude_array,
+            "anomaly": filled_array,
+        }
+    )
+    # Remove odd latitudes and longitudes
+    modern_temperature_df = modern_temperature_df.filter(
+        (modern_temperature_df["geo_meanLat"] % 2 == 0)
+        & (modern_temperature_df["geo_meanLon"] % 2 == 0)
+    )
 
-# Group by latitude and longitude, and calculate the average anomaly for each group of 12 months
-grouped_df = (
-    df.with_columns((1850 + pl.col("month") // 12).alias("year"))
-    .group_by(["geo_meanLat", "geo_meanLon", "year"])
-    .agg(pl.col("anomaly").mean().alias("anomaly"))
-)
+    # Group by latitude and longitude, and calculate the average anomaly for each group of 12 months
+    modern_temperature_df = (
+        modern_temperature_df.with_columns((1850 + pl.col("month") // 12).alias("year"))
+        .group_by(["geo_meanLat", "geo_meanLon", "year"])
+        .agg(pl.col("anomaly").mean().alias("anomaly"))
+    )
 
-modern_temperature.modern_temperature_grid.variables["climatology"].shape
-# Calculate the average annual temperature for each latitude and longitude combination
-climatology_data = modern_temperature.modern_temperature_grid.variables["climatology"][
-    :
-]
-# Get the dimensions
-months, latitudes, longitudes = climatology_data.shape
+    modern_temperature.modern_temperature_grid.variables["climatology"].shape
+    # Calculate the average annual temperature for each latitude and longitude combination
+    climatology_data = modern_temperature.modern_temperature_grid.variables[
+        "climatology"
+    ][:]
+    # Get the dimensions
+    months, latitudes, longitudes = climatology_data.shape
 
-# Calculate the average annual temperature
-average_climate = climatology_data.mean(axis=0)
+    # Calculate the average annual temperature
+    average_climate = climatology_data.mean(axis=0)
+    # Create arrays for latitude and longitude
+    latitude_array = np.arange(latitudes) - 89
+    longitude_array = np.arange(longitudes) - 179
 
-# Create arrays for latitude and longitude
-latitude_array = np.arange(latitudes) - 89
-longitude_array = np.arange(longitudes) - 179
+    # Create a Polars DataFrame
+    climatology_df = pl.DataFrame(
+        {
+            "geo_meanLat": np.repeat(latitude_array, longitudes),
+            "geo_meanLon": np.tile(longitude_array, latitudes),
+            "climate": average_climate.flatten(),
+        }
+    )
+    # Remove odd latitudes and longitudes
+    climatology_df = climatology_df.filter(
+        (climatology_df["geo_meanLat"] % 2 == 0)
+        & (climatology_df["geo_meanLon"] % 2 == 0)
+    )
 
-# Create a Polars DataFrame
-climatology_df = pl.DataFrame(
-    {
-        "geo_meanLat": np.repeat(latitude_array, longitudes),
-        "geo_meanLon": np.tile(longitude_array, latitudes),
-        "climate": average_climate.flatten(),
-    }
-)
+    # Merge climatology_df and grouped_df on latitude and longitude
+    modern_temperature_df = climatology_df.join(
+        modern_temperature_df, on=["geo_meanLat", "geo_meanLon"], how="inner"
+    )
+    modern_temperature_df = modern_temperature_df.with_columns(
+        (pl.col("climate") + pl.col("anomaly")).alias("degC")
+    ).drop("climate")
 
-# Merge climatology_df and grouped_df on latitude and longitude
-merged_df = climatology_df.join(
-    grouped_df, on=["geo_meanLat", "geo_meanLon"], how="inner"
-)
-merged_df = merged_df.with_columns(
-    (pl.col("climate") + pl.col("anomaly")).alias("degC")
-).drop("climate")
+    # Assign a unique sample_id to each unique pair of geo_meanLat and geo_meanLon
+    unique_locations = modern_temperature_df.select(
+        ["geo_meanLat", "geo_meanLon"]
+    ).unique()
+    unique_locations = unique_locations.with_row_count(name="sample_id")
 
-# Assign a unique sample_id to each unique pair of geo_meanLat and geo_meanLon
-unique_locations = merged_df.select(["geo_meanLat", "geo_meanLon"]).unique()
-unique_locations = unique_locations.with_row_count(name="sample_id")
+    # Join the unique locations with the merged_df to assign sample_id
+    modern_temperature_df = modern_temperature_df.join(
+        unique_locations, on=["geo_meanLat", "geo_meanLon"], how="left"
+    )
+    print(modern_temperature_df)
 
-# Join the unique locations with the merged_df to assign sample_id
-merged_df = merged_df.join(
-    unique_locations, on=["geo_meanLat", "geo_meanLon"], how="left"
-)
-print(merged_df)
-
-# Assign a unique temperature_id to each row
-merged_df = merged_df.with_row_count(name="temperature_id")
-
-merged_df = merged_df.with_columns(
-    pl.col("temperature_id").cast(pl.Int64),
-    pl.col("sample_id").cast(pl.Int64),
-    pl.col("year").cast(pl.Int64),
-    pl.col("degC").cast(pl.Float64),
-    pl.col("anomaly").cast(pl.Float64),
-    pl.col("geo_meanLat").cast(pl.Int64),
-    pl.col("geo_meanLon").cast(pl.Int64),
-)
+    modern_temperature_df = modern_temperature_df.with_columns(
+        pl.col("sample_id").cast(pl.Int64),
+        pl.col("year").cast(pl.Int64),
+        pl.col("degC").cast(pl.Float64),
+        pl.col("anomaly").cast(pl.Float64),
+        pl.col("geo_meanLat").cast(pl.Int64),
+        pl.col("geo_meanLon").cast(pl.Int64),
+    )
+    modern_temperature_df.write_csv("Data/precomputed_modern_temperature.csv")
+else:
+    modern_temperature_df = pl.read_csv("Data/precomputed_modern_temperature.csv")
 
 # Ensure the column order matches
 temperature_df = pl.concat(
     [
         temperature_df,
-        merged_df.select(
+        modern_temperature_df.select(
             [
-                "temperature_id",
                 "sample_id",
                 "year",
                 "degC",
@@ -321,27 +323,30 @@ temperature_df = pl.concat(
             ]
         ),
     ]
-)
+).with_row_count(name="temperature_id")
 
 # %%
 # Write the temperature data to the SQL Server database
+print("Writing temperature records to database")
+print(temperature_df)
 update_db = True
 if update_db:
     db.connect()
-    db.drop_table("TS_Sample")
-    db.create_table(
-        "TS_Sample",
-        {
-            "temperature_id": "INT PRIMARY KEY",
-            "sample_id": "INT",
-            "year": "INT",
-            "degC": "FLOAT",
-            "anomaly": "FLOAT",
-            "geo_meanLat": "FLOAT",
-            "geo_meanLon": "FLOAT",
-        },
-    )
-
+    # db.drop_table("TS_Sample")
+    table_name = "TS_Sample"
+    if not db.table_exists(table_name):
+        db.create_table(
+            table_name,
+            {
+                "temperature_id": "INT PRIMARY KEY",
+                "sample_id": "INT",
+                "year": "INT",
+                "degC": "FLOAT",
+                "anomaly": "FLOAT",
+                "geo_meanLat": "FLOAT",
+                "geo_meanLon": "FLOAT",
+            },
+        )
     temperature_df.write_database("TS_Sample", db.conn, if_table_exists="replace")
     # 2 methods to insert into the database
     db.close()
