@@ -289,6 +289,9 @@ if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
         ["geo_meanLat", "geo_meanLon"]
     ).unique()
     unique_locations = unique_locations.with_row_count(name="sample_id")
+    unique_locations = unique_locations.with_columns(
+        (pl.col("sample_id") + num_samples + 1).alias("sample_id")
+    )  # Add num_samples to each sample_id to avoid duplicates
 
     # Join the unique locations with the merged_df to assign sample_id
     modern_temperature_df = modern_temperature_df.join(
@@ -326,29 +329,71 @@ temperature_df = pl.concat(
 ).with_row_count(name="temperature_id")
 
 # %%
-# Write the temperature data to the SQL Server database
-print("Writing temperature records to database")
-print(temperature_df)
+# Convert data to a star schema
+schemas = {
+    "fact_temperature": {
+        "temperature_id": "INT PRIMARY KEY",
+        "sample_id": "INT",
+        "degC": "FLOAT",
+        "anomaly": "FLOAT",
+    },
+    "dim_time": {
+        "temperature_id": "INT PRIMARY KEY",
+        "year": "INT",
+    },
+    "dim_location": {
+        "sample_id": "INT PRIMARY KEY",
+        "geo_meanLat": "FLOAT",
+        "geo_meanLon": "FLOAT",
+    },
+}
+tables = {
+    name: temperature_df.select(schema.keys()).unique()
+    for name, schema in schemas.items()
+}
+# Create DataFrames for each schema
+# Star schema will reduce location redundancy and allow time bins to be stored for analysis
+
+# %%
+# Split dim_time years into bins based on data availability for the time period
+def get_year_bin(year: int) -> int:
+    if year < -700000:  # Nearest 50,000
+        return round(year / 50000) * 50000
+    elif year < -20000:  # Nearest 2000
+        return round(year / 2000) * 2000
+    elif year < 0:  # Nearest 500
+        return round(year / 500) * 500
+    elif year < 1850:  # Nearest 50
+        return round(year / 50) * 50
+    else:  # Nearest 1
+        return round(year)
+
+
+tables["dim_time"] = tables["dim_time"].with_columns(
+    pl.col("year").map_elements(get_year_bin, return_dtype=pl.Int64).alias("year_bin")
+)
+schemas["dim_time"]["year_bin"] = "INT"
+print(tables["dim_time"])
+
+# %%
+# Write the temperature data to the SQL server database
 update_db = True
+schemas_to_update = {
+    "fact_temperature": True,
+    "dim_time": True,
+    "dim_location": True,
+}
 if update_db:
     db.connect()
-    # db.drop_table("TS_Sample")
-    table_name = "TS_Sample"
-    if not db.table_exists(table_name):
-        db.create_table(
-            table_name,
-            {
-                "temperature_id": "INT PRIMARY KEY",
-                "sample_id": "INT",
-                "year": "INT",
-                "degC": "FLOAT",
-                "anomaly": "FLOAT",
-                "geo_meanLat": "FLOAT",
-                "geo_meanLon": "FLOAT",
-            },
-        )
-    temperature_df.write_database("TS_Sample", db.conn, if_table_exists="replace")
-    # 2 methods to insert into the database
+    for table_name, schema in schemas.items():
+        if schemas_to_update[table_name]:
+            print(f"Updating {table_name}...")
+            db.drop_table(table_name)
+            db.create_table(table_name, schema)
+            tables[table_name].write_database(
+                table_name, db.conn, if_table_exists="replace"
+            )
     db.close()
+    print("Finished updating database")
 
 # %%
