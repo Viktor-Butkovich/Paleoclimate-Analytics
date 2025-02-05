@@ -2,22 +2,8 @@ import netCDF4 as nc
 import numpy as np
 import warnings
 import os
-import math
+import matplotlib.pyplot as plt
 
-months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-]
 warnings.filterwarnings("ignore", category=UserWarning)
 if os.getcwd().endswith(
     "modules"
@@ -55,7 +41,7 @@ def find_nearest(array, value):
     return idx
 
 
-def get_average_temperature(lat, lon, month=None):
+def get_climate_month(lat, lon, month_idx):
     """
     Gets the average temperature for the nearest latitude and longitude.
 
@@ -67,80 +53,111 @@ def get_average_temperature(lat, lon, month=None):
     Returns:
     float: The average temperature.
     """
-    # temperatures = dataset.variables['temperature']
-    lat_idx = find_nearest(modern_temperature_grid.variables["latitude"][:], lat)
-    lon_idx = find_nearest(modern_temperature_grid.variables["longitude"][:], lon)
     # The temperature variable holds anomaly delta degC for each month since 1850, while the climatology variable holds the historical average degC for each month
-    last_year = modern_temperature_grid.variables["climatology"][:, lat_idx, lon_idx]
-    if month:
-        month_idx = [
-            "Jan",
-            "Feb",
-            "Mar",
-            "Apr",
-            "May",
-            "Jun",
-            "Jul",
-            "Aug",
-            "Sep",
-            "Oct",
-            "Nov",
-            "Dec",
-        ].index(month)
-        return last_year[month_idx]
-    else:
-        return np.mean(last_year)
-
-
-def get_temperature_when(lat, lon, year, month=None):
-    month_time_series = []
-    index_year = year - 1850
-    if month:
-        indexes = [index_year * 12 + months.index(month)]
-    else:
-        indexes = range(index_year * 12, (index_year + 1) * 12)
-    for time in indexes:
-        temperature_when = modern_temperature_grid.variables["temperature"][
-            time, lat, lon
-        ]
-        forward_offset = 0
-        while (
-            type(temperature_when) == np.ma.core.MaskedConstant
-        ):  # Missing values are masked constants
-            forward_offset += 12
-            temperature_when = modern_temperature_grid.variables["temperature"][
-                time + forward_offset, lat, lon
-            ]
-        month_time_series.append(temperature_when)
-    # print(month_time_series)
-    return np.mean(month_time_series)
-
-
-def missouri_example():
-    latitude = 37  # Example latitude of Missouri
-    longitude = -91  # Example longitude of Missouri
-    missouri_temperature = get_average_temperature(
-        modern_temperature_grid, latitude, longitude
+    return float(
+        modern_temperature_grid.variables["climatology"][
+            :, round(lat) + 89, round(lon) + 179
+        ][month_idx]
     )
-    print(missouri_temperature)
-    missouri_temperatures = modern_temperature_grid.variables["climatology"][:, 37, -91]
-    print(len(missouri_temperatures))
-    print(missouri_temperatures)
 
-    # for latitude in range(-90, 91):
-    #    print(f"Latitude: {latitude}, Average Temperature: {get_average_temperature(dataset, latitude, longitude)}")
-    # It's working!
 
-avg = get_temperature_when(37, -91, 1950)
-averages = []
-# for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]:
-#    avg = get_temperature_when(37, -91, 1950, month)
+def get_climate(lat, lon):
+    # The temperature variable holds anomaly delta degC for each month since 1850, while the climatology variable holds the historical average degC for each month
+    return float(
+        np.mean(
+            modern_temperature_grid.variables["climatology"][
+                :, round(lat) + 89, round(lon) + 179
+            ]
+        )
+    )
 
-year_time_series = []
-for year in range(1850, 2025):
-    averages = []
-    for lat, lon in zip(range(-90, 91), range(-180, 181)):
-        averages.append(get_temperature_when(lat, lon, year))
-    year_time_series.append(np.mean(averages))
-print(len(year_time_series))
+
+def get_weighted_global_average_climate():
+    latitudes = np.arange(-90, 91, 1)
+    weights = np.cos(np.radians(latitudes))
+    weighted_sum = 0
+    total_weight = 0
+    for lat, weight in zip(latitudes, weights):
+        for lon in range(-180, 181, 1):
+            weighted_sum += get_climate(lat, lon) * weight
+            total_weight += weight
+    return weighted_sum / total_weight
+
+
+def get_anomaly_when_month(lat, lon, year, month_idx):
+    temperature = modern_temperature_grid.variables["temperature"][
+        (year - 1850) * 12 + month_idx, lat, lon
+    ]
+    if (
+        type(temperature) == np.ma.core.MaskedConstant
+    ):  # Replace missing value with next year]
+        return get_anomaly_when_month(lat, lon, year + 10, month_idx)
+    else:
+        return float(temperature)
+
+
+def get_anomaly_when(lat, lon, year, month_idx=None):
+    if month_idx == None:
+        month_time_series = [
+            get_anomaly_when_month(lat, lon, year, month_idx) for month_idx in range(12)
+        ]
+        return float(np.mean(month_time_series))
+    else:
+        return get_anomaly_when_month(lat, lon, year, month_idx)
+
+
+def apply_get_anomaly_when(args):
+    return float(
+        np.mean(
+            [
+                get_anomaly_when_month(
+                    args["geo_meanLat"], args["geo_meanLon"], args["year"], month_idx
+                )
+                for month_idx in range(12)
+            ]
+        )
+    )
+
+
+def apply_climate(args):
+    print(args)
+    print(get_climate(args["latitude"], args["longitude"]))
+    return get_climate(args["latitude"], args["longitude"])
+
+
+# Latitudes and longitudes are not proportional to surface area.
+# To get a more accurate representation of the Earth's surface, we need to account for the cosine of the latitude.
+# This is because the distance between lines of longitude decreases as you move towards the poles.
+
+
+def calculations():
+    recalculate = False
+    if recalculate:
+        weighted_average_climate = get_weighted_global_average_climate()
+    else:
+        weighted_average_climate = 14.231
+    print(weighted_average_climate)
+
+    climates = [
+        get_average_temperature(lat, long)
+        for lat, long in zip(range(-90, 91, 1), range(-180, 181, 1))
+    ]
+
+    year_time_series = []
+    years = range(1850, 2025)
+    for year in years:
+        averages = []
+        print("analyzing", year)
+        for lat, lon in zip(range(-90, 91, 25), range(-180, 181, 25)):
+            averages.append(get_temperature_when(lat, lon, year))
+        year_time_series.append(np.mean(averages) + weighted_average_climate)
+
+    plt.plot(years, year_time_series, marker="o")
+    plt.xlabel("Year")
+    plt.ylabel("Average Temperature (°C)")
+    plt.title("Yearly Average Temperature from 1850 through 2024")
+    plt.grid(True)
+    plt.show()
+
+
 # Reference https://berkeleyearth.org/data/ for dataset

@@ -95,6 +95,7 @@ class Temp12k_TS_sample(TypedDict):
     paleoData_hasResolution_hasMedianValue: float
     paleoData_number: int
     paleoData_values: List[float]
+    paleoData_habitatSeason: str
 
 
 class Temp12k_data(TypedDict):
