@@ -11,7 +11,7 @@ import numpy as np
 import os
 
 # %%
-# Read in the data
+# Extract the Temp12k data - 1 mya to present
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 data: data_types.Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
@@ -79,7 +79,7 @@ def include_sample(sample: data_types.Temp12k_TS_sample) -> bool:
 
 
 # %%
-# Pre-processing
+# Transform Temp12k data - pre-processing and cleaning
 for sample in data["TS"]:
     units.add(sample.get("paleoData_units"))
     if include_sample(sample):
@@ -198,7 +198,7 @@ max_degC = temperature_df["degC"].max()
 print(f"Maximum degC: {max_degC}")
 
 # %%
-# Add recent climate data (since 1850)
+# Extract/Transform Berkeley Earth recent climate data (since 1850)
 recompute = False
 if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
     array_data = modern_temperature.modern_temperature_grid.variables["temperature"][:]
@@ -329,7 +329,7 @@ temperature_df = pl.concat(
 ).with_row_count(name="temperature_id")
 
 # %%
-# Convert data to a star schema
+# Transform data to a star schema
 schemas = {
     "fact_temperature": {
         "temperature_id": "INT PRIMARY KEY",
@@ -376,7 +376,7 @@ schemas["dim_time"]["year_bin"] = "INT"
 print(tables["dim_time"])
 
 # %%
-# Write the temperature data to the SQL server database
+# Load the temperature data to the SQL server database
 update_db = True
 schemas_to_update = {
     "fact_temperature": True,
