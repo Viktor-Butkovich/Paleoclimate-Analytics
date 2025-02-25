@@ -1,11 +1,9 @@
 # %%
 # Imports
 from modules import data_types, db, modern_temperature
-import matplotlib.pyplot as plt
 import pickle as pkl
 import polars as pl
 import json
-import pprint
 import warnings
 import numpy as np
 import os

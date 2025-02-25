@@ -43,9 +43,11 @@ colnames(anomaly_year_df) <- c("anomaly", "year_bin")
 
 cat("Shape of anomaly_year_df:", nrow(anomaly_year_df), "rows x", ncol(anomaly_year_df), "columns\n")
 cat("\nAggregating...\n")
-anomaly_year_df <- as.data.frame(anomaly_year_df %>%
-    group_by(year_bin) %>%
-    summarise_at(vars(anomaly), list(anomaly = mean)))
+anomaly_year_df <- anomaly_year_df %>%
+    group_by(year_bin) %>% # Aggregate anomalies per year_bin
+    summarise(anomaly = mean(anomaly, na.rm = TRUE)) %>%
+    ungroup()
+
 cat("Shape of anomaly_year_df:", nrow(anomaly_year_df), "rows x", ncol(anomaly_year_df), "columns\n")
 
 cat("\nCreating plots...\n")
@@ -107,6 +109,8 @@ ggsave("Outputs/modern_temperature_anomaly_line_plot.png", width = 10, height = 
 
 modern_plot_config + geom_point()
 ggsave("Outputs/modern_temperature_anomaly_scatter_plot.png", width = 10, height = 6)
+
+write.csv(anomaly_year_df, "Data/anomaly_year.csv", row.names = FALSE)
 
 DBI::dbDisconnect(conn)
 cat("\nDisconnected from database\n")
