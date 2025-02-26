@@ -359,8 +359,8 @@ def get_year_bin(year: int) -> int:
         return round(year / 50000) * 50000
     elif year < -20000:  # Nearest 2000
         return round(year / 2000) * 2000
-    elif year < 0:  # Nearest 500
-        return round(year / 500) * 500
+    elif year < 0:  # Nearest 250
+        return round(year / 250) * 250
     elif year < 1850:  # Nearest 50
         return round(year / 50) * 50
     else:  # Nearest 1

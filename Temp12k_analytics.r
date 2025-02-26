@@ -70,7 +70,7 @@ ggsave("Outputs/long_term_temperature_anomaly_scatter_plot.png", width = 10, hei
 long_term_plot_config + geom_line()
 ggsave("Outputs/long_term_temperature_anomaly_line_plot.png", width = 10, height = 6)
 
-since_ice_age_plot_config <- ggplot(anomaly_year_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
+since_ice_age_plot_config <- ggplot(anomaly_year_df %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
     annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
     geom_vline(xintercept = -10000, linetype = "dashed", color = "#0072F5") +
@@ -82,8 +82,7 @@ since_ice_age_plot_config <- ggplot(anomaly_year_df, aes(x = year_bin, y = anoma
     scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 3, limits = c(-3, 3)) +
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
-    scale_y_continuous(limits = c(-3, 3)) +
-    scale_x_continuous(limits = c(-12000, 2025), labels = scales::comma)
+    scale_y_continuous(limits = c(-3, 3))
 
 since_ice_age_plot_config + geom_line()
 ggsave("Outputs/since_ice_age_temperature_anomaly_line_plot.png", width = 10, height = 6)
