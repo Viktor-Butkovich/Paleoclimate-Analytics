@@ -61,6 +61,19 @@ outliers = []
 rewritten_samples = []
 
 
+def get_year_bin(year: int) -> int:
+    if year < -700000:  # Nearest 50,000
+        return round(year / 50000) * 50000
+    elif year < -20000:  # Nearest 2000
+        return round(year / 2000) * 2000
+    elif year < 0:  # Nearest 250
+        return round(year / 250) * 250
+    elif year < 1850:  # Nearest 50
+        return round(year / 50) * 50
+    else:  # Nearest 1
+        return round(year)
+
+
 def include_sample(sample: data_types.Temp12k_TS_sample) -> bool:
     if sample.get("paleoData_units") != "degC":
         return False
@@ -326,18 +339,59 @@ temperature_df = pl.concat(
     ]
 ).with_row_count(name="temperature_id")
 
+# Assign measurements to year bins
+#   Since we are combining measurements from many sources and times, we need to bin them to avoid missing values
+temperature_df = temperature_df.with_columns(
+    pl.col("year").map_elements(get_year_bin, return_dtype=pl.Int64).alias("year_bin")
+).with_columns(pl.col("year_bin").alias("time_id"))
+valid_year_bins = list(temperature_df["year_bin"].unique())
+
+# %%
+# Incorporate CO2 data from ice core samples from last 800,000 years
+
+co2_df = pl.read_csv("Data/ice_core_800k_co2_extracted.csv")
+co2_df = (
+    co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))
+    .with_columns(
+        pl.col("year")
+        .map_elements(get_year_bin, return_dtype=pl.Int64)
+        .alias("year_bin")
+    )
+    .group_by("year_bin")
+    .agg(pl.col("co2_ppm").mean().alias("co2_ppm"))
+)
+
+# Ensure every valid year bin has an entry in co2_df
+missing_year_bins = set(valid_year_bins) - set(co2_df["year_bin"].unique())
+missing_entries = pl.DataFrame(
+    {"year_bin": list(missing_year_bins), "co2_ppm": [None] * len(missing_year_bins)}
+)
+co2_df = pl.concat([co2_df, missing_entries]).sort("year_bin")
+co2_df = co2_df.with_columns(
+    pl.col("co2_ppm").fill_null(strategy="backward").fill_null(strategy="forward")
+)
+
+temperature_df = temperature_df.join(co2_df, on="year_bin", how="left").with_columns(
+    pl.col("co2_ppm").cast(pl.Float64)
+)
+
 # %%
 # Transform data to a star schema
 schemas = {
     "fact_temperature": {
         "temperature_id": "INT PRIMARY KEY",
+        "time_id": "INT",
         "sample_id": "INT",
         "degC": "FLOAT",
         "anomaly": "FLOAT",
     },
     "dim_time": {
-        "temperature_id": "INT PRIMARY KEY",
-        "year": "INT",
+        "time_id": "INT PRIMARY KEY",
+        "year_bin": "INT",
+    },
+    "dim_atmosphere": {
+        "time_id": "INT PRIMARY KEY",
+        "co2_ppm": "FLOAT",
     },
     "dim_location": {
         "sample_id": "INT PRIMARY KEY",
@@ -350,28 +404,6 @@ tables = {
     for name, schema in schemas.items()
 }
 # Create DataFrames for each schema
-# Star schema will reduce location redundancy and allow time bins to be stored for analysis
-
-# %%
-# Split dim_time years into bins based on data availability for the time period
-def get_year_bin(year: int) -> int:
-    if year < -700000:  # Nearest 50,000
-        return round(year / 50000) * 50000
-    elif year < -20000:  # Nearest 2000
-        return round(year / 2000) * 2000
-    elif year < 0:  # Nearest 250
-        return round(year / 250) * 250
-    elif year < 1850:  # Nearest 50
-        return round(year / 50) * 50
-    else:  # Nearest 1
-        return round(year)
-
-
-tables["dim_time"] = tables["dim_time"].with_columns(
-    pl.col("year").map_elements(get_year_bin, return_dtype=pl.Int64).alias("year_bin")
-)
-schemas["dim_time"]["year_bin"] = "INT"
-print(tables["dim_time"])
 
 # %%
 # Load the temperature data to the SQL server database
@@ -379,6 +411,7 @@ update_db = True
 schemas_to_update = {
     "fact_temperature": True,
     "dim_time": True,
+    "dim_atmosphere": True,
     "dim_location": True,
 }
 if update_db:
@@ -386,7 +419,8 @@ if update_db:
     for table_name, schema in schemas.items():
         if schemas_to_update[table_name]:
             print(f"Updating {table_name}...")
-            db.drop_table(table_name)
+            if db.table_exists(table_name):
+                db.drop_table(table_name)
             db.create_table(table_name, schema)
             tables[table_name].write_database(
                 table_name, db.conn, if_table_exists="replace"

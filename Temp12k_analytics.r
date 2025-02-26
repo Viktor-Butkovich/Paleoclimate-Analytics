@@ -34,43 +34,55 @@ DBI::dbExecute(conn, "
 ") # Reduce log file size
 
 cat("\nRetrieving records from database...\n")
-anomaly_year_df <- as.data.frame(DBI::dbGetQuery(conn, "
-    SELECT t.anomaly, dt.year_bin
+anomaly_df <- as.data.frame(DBI::dbGetQuery(conn, "
+    SELECT t.anomaly, dt.year_bin, da.co2_ppm
     FROM fact_temperature t
-    INNER JOIN dim_time dt ON t.temperature_id = dt.temperature_id
-")) # Get corresponding anomaly per year_bin
-colnames(anomaly_year_df) <- c("anomaly", "year_bin")
+    INNER JOIN dim_time dt ON t.time_id = dt.time_id
+    INNER JOIN dim_atmosphere da ON t.time_id = da.time_id
+")) # Get corresponding anomaly per year_bin`
 
-cat("Shape of anomaly_year_df:", nrow(anomaly_year_df), "rows x", ncol(anomaly_year_df), "columns\n")
+colnames(anomaly_df) <- c("anomaly", "year_bin", "co2_ppm")
+
+cat("Shape of anomaly_df:", nrow(anomaly_df), "rows x", ncol(anomaly_df), "columns\n")
 cat("\nAggregating...\n")
-anomaly_year_df <- anomaly_year_df %>%
-    group_by(year_bin) %>% # Aggregate anomalies per year_bin
+anomaly_df <- anomaly_df %>%
+    group_by(year_bin, co2_ppm) %>% # Aggregate anomalies per year_bin
     summarise(anomaly = mean(anomaly, na.rm = TRUE)) %>%
     ungroup()
 
-cat("Shape of anomaly_year_df:", nrow(anomaly_year_df), "rows x", ncol(anomaly_year_df), "columns\n")
+cat("Shape of anomaly_df:", nrow(anomaly_df), "rows x", ncol(anomaly_df), "columns\n")
 
 cat("\nCreating plots...\n")
-long_term_plot_config <- ggplot(anomaly_year_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
+ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
+    geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
-    annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -600000, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#DF00A7") +
     geom_vline(xintercept = -700000, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = -700000, y = 5, label = "Quaternary Glaciation Intensifies", hjust = 1.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -440000, y = 5, label = "Quaternary Glaciation Intensifies", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
     geom_vline(xintercept = -110000, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = -110000, y = 5, label = "Last Ice Age Starts", hjust = 1.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -110000, y = 5, label = "Last Ice Age Starts", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
     scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 8, limits = c(-10, 10)) +
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-10, 10)) +
     scale_x_continuous(labels = scales::comma)
+ggsave("Outputs/long_term_temperature_anomaly.png", width = 10, height = 6)
 
-long_term_plot_config + geom_point()
-ggsave("Outputs/long_term_temperature_anomaly_scatter_plot.png", width = 10, height = 6)
+ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
+    geom_line() +
+    geom_vline(xintercept = -700000, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = -440000, y = 350, label = "Quaternary Glaciation Intensifies", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
+    geom_vline(xintercept = -110000, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = -110000, y = 350, label = "Last Ice Age Starts", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
+    scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 8, limits = c(-10, 10)) +
+    labs(x = "Year", y = "CO2 Concentration (parts per million)") +
+    theme_classic() +
+    scale_y_continuous(limits = c(150, 450)) +
+    scale_x_continuous(labels = scales::comma)
+ggsave("Outputs/long_term_co2_ppm.png", width = 10, height = 6)
 
-long_term_plot_config + geom_line()
-ggsave("Outputs/long_term_temperature_anomaly_line_plot.png", width = 10, height = 6)
-
-since_ice_age_plot_config <- ggplot(anomaly_year_df %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
+ggplot(anomaly_df %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
+    geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
     annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
     geom_vline(xintercept = -10000, linetype = "dashed", color = "#0072F5") +
@@ -83,16 +95,11 @@ since_ice_age_plot_config <- ggplot(anomaly_year_df %>% filter(year_bin >= -1200
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-3, 3))
+ggsave("Outputs/since_ice_age_temperature_anomaly.png", width = 10, height = 6)
 
-since_ice_age_plot_config + geom_line()
-ggsave("Outputs/since_ice_age_temperature_anomaly_line_plot.png", width = 10, height = 6)
-
-since_ice_age_plot_config + geom_point()
-ggsave("Outputs/since_ice_age_temperature_anomaly_scatter_plot.png", width = 10, height = 6)
-
-latest_anomaly <- tail(anomaly_year_df$anomaly, 1)
-
-modern_plot_config <- ggplot(anomaly_year_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
+latest_anomaly <- tail(anomaly_df$anomaly, 1)
+modern_plot_config <- ggplot(anomaly_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
+    geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
     annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
     geom_vline(xintercept = 2024, linetype = "dashed", color = "#0072F5") +
@@ -102,14 +109,16 @@ modern_plot_config <- ggplot(anomaly_year_df, aes(x = year_bin, y = anomaly, col
     theme_classic() +
     scale_y_continuous(limits = c(-2, 2)) +
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
+ggsave("Outputs/modern_temperature_anomaly.png", width = 10, height = 6)
 
-modern_plot_config + geom_line()
-ggsave("Outputs/modern_temperature_anomaly_line_plot.png", width = 10, height = 6)
 
-modern_plot_config + geom_point()
-ggsave("Outputs/modern_temperature_anomaly_scatter_plot.png", width = 10, height = 6)
+ggplot(anomaly_df, aes(x = co2_ppm, y = anomaly, color = year_bin >= 1850)) +
+    geom_point(size = 2.2) +
+    geom_smooth(method = "lm", se = FALSE) +
+    theme_classic()
+ggsave("Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
 
-write.csv(anomaly_year_df, "Data/anomaly_year.csv", row.names = FALSE)
+write.csv(anomaly_df, "Data/anomaly_year.csv", row.names = FALSE)
 
 DBI::dbDisconnect(conn)
 cat("\nDisconnected from database\n")
