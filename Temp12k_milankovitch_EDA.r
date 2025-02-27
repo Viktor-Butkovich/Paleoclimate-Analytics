@@ -1,6 +1,6 @@
 library(tidyverse)
 
-file_path <- "Data/forcing/Milankovitch/Milankovitch-Insolation-Extracted.csv"
+file_path <- "Data/Milankovitch-Insolation-Extracted.csv"
 
 milankovitch_df <- read_csv(file_path)
 

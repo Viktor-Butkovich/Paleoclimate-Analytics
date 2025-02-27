@@ -14,9 +14,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 data: data_types.Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
 # The data has "TS" and "D" sections
-json.dump(data["TS"][0], open("Data/example_ts_sample.json", "w"))
+json.dump(data["TS"][0], open("Data/raw/example_ts_sample.json", "w"))
 json.dump(
-    data["D"][next(iter(data["D"].keys()))], open("Data/example_d_sample.json", "w")
+    data["D"][next(iter(data["D"].keys()))], open("Data/raw/example_d_sample.json", "w")
 )
 # A D sample seems to have a collection of data types (temperature, age, depth, material, sensorSpecies, etc.) - tracks all variables over time from a particular study
 # A TS sample seems to have a single data type (temperature, depth, etc.) paired with age - tracks a single variable over time from a particular study
@@ -179,11 +179,11 @@ print("Unique units:", units)
 print("Oldest age:", max(ages))
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
 #   We want to find samples regarding temperature
-json.dump(temperature_data, open("Data/temperature_data.json", "w"))
+json.dump(temperature_data, open("Data/raw/temperature_data.json", "w"))
 print(
     f"{num_samples} samples include degC temperature data, resulting in {len(temperature_data)} time series data points"
 )
-json.dump(rewritten_samples, open("Data/anomaly_outlier_samples.json", "w"))
+json.dump(rewritten_samples, open("Data/raw/anomaly_outlier_samples.json", "w"))
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
 # As shown in the below plot, this sample was taken near the east coast of the Arabian Peninsula
@@ -348,7 +348,6 @@ valid_year_bins = list(temperature_df["year_bin"].unique())
 
 # %%
 # Incorporate CO2 data from ice core samples from last 800,000 years
-
 co2_df = pl.read_csv("Data/ice_core_800k_co2_extracted.csv")
 co2_df = (
     co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))
@@ -361,7 +360,7 @@ co2_df = (
     .agg(pl.col("co2_ppm").mean().alias("co2_ppm"))
 )
 
-# Ensure every valid year bin has an entry in co2_df
+# Ensure each year bin has a matching CO2 entry
 missing_year_bins = set(valid_year_bins) - set(co2_df["year_bin"].unique())
 missing_entries = pl.DataFrame(
     {"year_bin": list(missing_year_bins), "co2_ppm": [None] * len(missing_year_bins)}
@@ -371,6 +370,41 @@ co2_df = co2_df.with_columns(
     pl.col("co2_ppm").fill_null(strategy="backward").fill_null(strategy="forward")
 )
 
+# %%
+# Incorporate modern CO2 data since 1979
+modern_atmosphere_df = pl.read_csv("Data/co2_annmean_gl_extracted.csv")
+modern_atmosphere_df = modern_atmosphere_df.with_columns(
+    pl.col("year").alias("year_bin"),
+    pl.col("mean").alias("co2_ppm"),
+).select(["year_bin", "co2_ppm"])
+
+# Add a row for year 2024 with co2_ppm 424.61
+modern_atmosphere_df = pl.concat(
+    [
+        modern_atmosphere_df,
+        pl.DataFrame({"year_bin": [2024], "co2_ppm": [424.61]}),
+    ]
+)
+
+# Concatenate modern atmosphere data onto CO2 data
+co2_df = pl.concat([co2_df, modern_atmosphere_df]).sort("year_bin")
+
+# Include radiative forcing calculation
+initial_co2_ppm = 228  # Pre-industrial CO2 concentration
+co2_df = co2_df.with_columns(
+    pl.col("co2_ppm")
+    .map_elements(lambda x: 5.35 * np.log(x / initial_co2_ppm), return_dtype=pl.Float64)
+    .alias("co2_radiative_forcing")
+)
+
+# If there are any duplicate year bins, prioritize the modern measurements over the ice core measurements
+co2_df = co2_df.group_by("year_bin").agg(
+    pl.col("co2_ppm").last().alias("co2_ppm"),
+    pl.col("co2_radiative_forcing").last().alias("co2_radiative_forcing"),
+)
+
+# %%
+# Join temperature samples and CO2 data
 temperature_df = temperature_df.join(co2_df, on="year_bin", how="left").with_columns(
     pl.col("co2_ppm").cast(pl.Float64)
 )
@@ -392,6 +426,7 @@ schemas = {
     "dim_atmosphere": {
         "time_id": "INT PRIMARY KEY",
         "co2_ppm": "FLOAT",
+        "co2_radiative_forcing": "FLOAT",
     },
     "dim_location": {
         "sample_id": "INT PRIMARY KEY",
@@ -409,7 +444,7 @@ tables = {
 # Load the temperature data to the SQL server database
 update_db = True
 schemas_to_update = {
-    "fact_temperature": True,
+    "fact_temperature": False,
     "dim_time": True,
     "dim_atmosphere": True,
     "dim_location": True,
@@ -421,7 +456,6 @@ if update_db:
             print(f"Updating {table_name}...")
             if db.table_exists(table_name):
                 db.drop_table(table_name)
-            db.create_table(table_name, schema)
             tables[table_name].write_database(
                 table_name, db.conn, if_table_exists="replace"
             )

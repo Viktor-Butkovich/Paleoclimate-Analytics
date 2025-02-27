@@ -35,18 +35,18 @@ DBI::dbExecute(conn, "
 
 cat("\nRetrieving records from database...\n")
 anomaly_df <- as.data.frame(DBI::dbGetQuery(conn, "
-    SELECT t.anomaly, dt.year_bin, da.co2_ppm
+    SELECT t.anomaly, dt.year_bin, da.co2_ppm, da.co2_radiative_forcing
     FROM fact_temperature t
     INNER JOIN dim_time dt ON t.time_id = dt.time_id
     INNER JOIN dim_atmosphere da ON t.time_id = da.time_id
 ")) # Get corresponding anomaly per year_bin`
 
-colnames(anomaly_df) <- c("anomaly", "year_bin", "co2_ppm")
+colnames(anomaly_df) <- c("anomaly", "year_bin", "co2_ppm", "co2_radiative_forcing")
 
 cat("Shape of anomaly_df:", nrow(anomaly_df), "rows x", ncol(anomaly_df), "columns\n")
 cat("\nAggregating...\n")
 anomaly_df <- anomaly_df %>%
-    group_by(year_bin, co2_ppm) %>% # Aggregate anomalies per year_bin
+    group_by(year_bin, co2_ppm, co2_radiative_forcing) %>% # Aggregate anomalies per year_bin
     summarise(anomaly = mean(anomaly, na.rm = TRUE)) %>%
     ungroup()
 
@@ -77,33 +77,48 @@ ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2_ppm
     scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 8, limits = c(-10, 10)) +
     labs(x = "Year", y = "CO2 Concentration (parts per million)") +
     theme_classic() +
-    scale_y_continuous(limits = c(150, 450)) +
+    scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(labels = scales::comma)
 ggsave("Outputs/long_term_co2_ppm.png", width = 10, height = 6)
 
 ggplot(anomaly_df %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
-    annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#DF00A7") +
     geom_vline(xintercept = -10000, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = -10000, y = 1.5, label = "Agricultural\nRevolution", hjust = 1.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -10000, y = 1.5, label = "Agricultural\nRevolution", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
     geom_vline(xintercept = -8000, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = -8000, y = 1.5, label = "Ice Age Ends", hjust = -0.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -8000, y = 1.5, label = "Ice Age Ends", hjust = -0.1, vjust = -0.5, color = "#0072F5") +
     geom_vline(xintercept = 1760, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = 1760, y = 1.5, label = "Industrial\nRevolution", hjust = 1.1, vjust = -0.5, color = "black") +
+    annotate("text", x = 1760, y = 1.5, label = "Industrial\nRevolution", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
     scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 3, limits = c(-3, 3)) +
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-3, 3))
 ggsave("Outputs/since_ice_age_temperature_anomaly.png", width = 10, height = 6)
 
+ggplot(anomaly_df %>% filter(year_bin >= -12000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
+    geom_line() +
+    geom_vline(xintercept = -10000, linetype = "dashed", color = "#DF00A7") +
+    annotate("text", x = -10000, y = 350, label = "Agricultural\nRevolution", hjust = 1.1, vjust = -0.5, color = "#DF00A7") +
+    geom_vline(xintercept = -8000, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = -8000, y = 350, label = "Ice Age Ends", hjust = -0.1, vjust = -0.5, color = "#0072F5") +
+    geom_vline(xintercept = 1760, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = 1760, y = 350, label = "Industrial\nRevolution", hjust = 1.1, vjust = -0.5, color = "#0072F5") +
+    scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 3, limits = c(-3, 3)) +
+    labs(x = "Year", y = "CO2 Concentration (parts per million)") +
+    theme_classic() +
+    scale_y_continuous(limits = c(175, 450)) +
+    scale_x_continuous(labels = scales::comma)
+ggsave("Outputs/since_ice_age_co2_ppm.png", width = 10, height = 6)
+
 latest_anomaly <- tail(anomaly_df$anomaly, 1)
-modern_plot_config <- ggplot(anomaly_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
+ggplot(anomaly_df, aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
-    annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "black") +
+    annotate("text", x = -3500, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#DF00A7") +
     geom_vline(xintercept = 2024, linetype = "dashed", color = "#0072F5") +
-    annotate("text", x = 2024, y = latest_anomaly, label = sprintf("2025: Anomaly of +%.2f°C", latest_anomaly), hjust = 1.1, vjust = -0.5, color = "black") +
+    annotate("text", x = 2024, y = latest_anomaly, label = sprintf("2024: Anomaly of +%.2f°C", latest_anomaly), hjust = 1.1, vjust = -0.5, color = "#0072F5") +
     scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 2, limits = c(-2, 2)) +
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
@@ -111,11 +126,26 @@ modern_plot_config <- ggplot(anomaly_df, aes(x = year_bin, y = anomaly, color = 
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
 ggsave("Outputs/modern_temperature_anomaly.png", width = 10, height = 6)
 
+ggplot(anomaly_df, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
+    geom_line() +
+    geom_vline(xintercept = 2024, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = 2024, y = 415, label = "2024: CO2 Concentration of 424.61 ppm", hjust = 1.1, vjust = -0.5, color = "black") +
+    scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 2, limits = c(-2, 2)) +
+    labs(x = "Year", y = "CO2 Concentration (parts per million)") +
+    theme_classic() +
+    scale_y_continuous(limits = c(175, 450)) +
+    scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
+ggsave("Outputs/modern_co2_ppm.png", width = 10, height = 6)
 
-ggplot(anomaly_df, aes(x = co2_ppm, y = anomaly, color = year_bin >= 1850)) +
+ggplot(anomaly_df %>% mutate(color_bin = case_when(
+    year_bin < 1850 ~ 0,
+    year_bin >= 1850 & year_bin < 1980 ~ 1,
+    year_bin >= 1980 ~ 2
+)), aes(x = co2_ppm, y = anomaly, color = factor(color_bin))) +
     geom_point(size = 2.2) +
     geom_smooth(method = "lm", se = FALSE) +
-    theme_classic()
+    theme_classic() +
+    scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
 ggsave("Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
 
 write.csv(anomaly_df, "Data/anomaly_year.csv", row.names = FALSE)

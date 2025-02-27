@@ -26,4 +26,10 @@ https://www.ncei.noaa.gov/access/paleo-search/
 Milankovitch Cycles dataset:
 http://www.climatedata.info/forcing/data-downloads/
 
+Modern CO2 levels dataset:
+https://gml.noaa.gov/ccgg/trends/gl_data.html
+
+2024 mean CO2 level:
+https://www.statista.com/statistics/1091999/atmospheric-concentration-of-co2-historic/
+
 Next, incorporate Milankovitch data as well as recent GHG index data
