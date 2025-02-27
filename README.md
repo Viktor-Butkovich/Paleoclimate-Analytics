@@ -8,6 +8,9 @@ Temperature anomaly since 1 million years ago:
 Note the very similar patterns of carbon dioxide levels over the last million years:
 ![Long Term CO2 Levels](Outputs/long_term_co2_ppm.png)
 
+Comparison of variations in solar radiation (due to orbital "wobble") with carbon dioxide levels and climate anomaly:
+![Insolation vs CO2 vs Temperature](Outputs/insolation_co2_ppm_anomaly_trends.png)
+
 Temperature anomaly since 12,000 BC:
 ![Since Ice Age Temperature Anomaly](Outputs/since_ice_age_temperature_anomaly.png)
 
