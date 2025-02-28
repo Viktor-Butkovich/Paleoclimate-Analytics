@@ -17,6 +17,9 @@ Temperature anomaly since 12,000 BC:
 Temperature anomaly since 1850:
 ![Modern Temperature Anomaly](Outputs/modern_temperature_anomaly_forecast.png)
 
+Estimated regression of temperature anomaly:
+![Temperature Anomaly Regression](Outputs/regression_anomaly_forecast.png)
+
 Research AGGI Index:
 https://gml.noaa.gov/aggi/aggi.html
 
