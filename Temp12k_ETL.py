@@ -1,6 +1,6 @@
 # %%
 # Imports
-from modules import data_types, db, modern_temperature
+from modules import data_types, db, modern_temperature, util
 import pickle as pkl
 import polars as pl
 import json
@@ -60,40 +60,11 @@ ages = []
 outliers = []
 rewritten_samples = []
 
-
-def get_year_bin(year: int) -> int:
-    if year < -700000:  # Nearest 50,000
-        return round(year / 50000) * 50000
-    elif year < -20000:  # Nearest 2000
-        return round(year / 2000) * 2000
-    elif year < 0:  # Nearest 250
-        return round(year / 250) * 250
-    elif year < 1850:  # Nearest 50
-        return round(year / 50) * 50
-    else:  # Nearest 1
-        return round(year)
-
-
-def include_sample(sample: data_types.Temp12k_TS_sample) -> bool:
-    if sample.get("paleoData_units") != "degC":
-        return False
-    elif sample.get("paleoData_useInGlobalTemperatureAnalysis", "TRUE") == "FALSE":
-        return False
-    elif "DELETE" in sample.get("paleoData_QCnotes", ""):
-        return False
-    elif sample.get("age", None) == None:
-        return False
-    elif sample.get("paleoData_values")[0] == "nan" or sample.get("age")[0] == "nan":
-        return False
-    else:
-        return True
-
-
 # %%
 # Transform Temp12k data - pre-processing and cleaning
 for sample in data["TS"]:
     units.add(sample.get("paleoData_units"))
-    if include_sample(sample):
+    if util.include_sample(sample):
         if (
             sample.get("paleoData_interpretation")
             and sample["paleoData_interpretation"][0].get("seasonality", "").lower()
@@ -342,33 +313,19 @@ temperature_df = pl.concat(
 # Assign measurements to year bins
 #   Since we are combining measurements from many sources and times, we need to bin them to avoid missing values
 temperature_df = temperature_df.with_columns(
-    pl.col("year").map_elements(get_year_bin, return_dtype=pl.Int64).alias("year_bin")
+    pl.col("year")
+    .map_elements(util.get_year_bin, return_dtype=pl.Int64)
+    .alias("year_bin")
 ).with_columns(pl.col("year_bin").alias("time_id"))
 valid_year_bins = list(temperature_df["year_bin"].unique())
 
 # %%
 # Incorporate CO2 data from ice core samples from last 800,000 years
 co2_df = pl.read_csv("Data/ice_core_800k_co2_extracted.csv")
-co2_df = (
-    co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))
-    .with_columns(
-        pl.col("year")
-        .map_elements(get_year_bin, return_dtype=pl.Int64)
-        .alias("year_bin")
-    )
-    .group_by("year_bin")
-    .agg(pl.col("co2_ppm").mean().alias("co2_ppm"))
+co2_df = (co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))).drop(
+    "age_gas_calBP"
 )
-
-# Ensure each year bin has a matching CO2 entry
-missing_year_bins = set(valid_year_bins) - set(co2_df["year_bin"].unique())
-missing_entries = pl.DataFrame(
-    {"year_bin": list(missing_year_bins), "co2_ppm": [None] * len(missing_year_bins)}
-)
-co2_df = pl.concat([co2_df, missing_entries]).sort("year_bin")
-co2_df = co2_df.with_columns(
-    pl.col("co2_ppm").fill_null(strategy="backward").fill_null(strategy="forward")
-)
+co2_df = util.year_bins_transform(co2_df, valid_year_bins)
 
 # %%
 # Incorporate modern CO2 data since 1979
@@ -404,9 +361,21 @@ co2_df = co2_df.group_by("year_bin").agg(
 )
 
 # %%
-# Join temperature samples and CO2 data
-temperature_df = temperature_df.join(co2_df, on="year_bin", how="left").with_columns(
-    pl.col("co2_ppm").cast(pl.Float64)
+# Incorporate orbital simulation data (Milankovitch cycles)
+orbital_df = pl.read_csv("Data/milankovitch_sim_extracted.csv")
+orbital_df = orbital_df.filter(pl.col("year") <= 2025).rename(
+    {"global.insolation": "global_insolation"}
+)
+orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
+
+# %%
+# Join temperature samples, CO2 data, and orbital data
+# Final dataframe combines climate all over the world since 1850, temperature measurements since 1 mya, CO2 measurements since 800 kya, GHG measurements since 1979, and orbital
+#   simulation data
+temperature_df = (
+    temperature_df.join(co2_df, on="year_bin", how="left")
+    .with_columns(pl.col("co2_ppm").cast(pl.Float64))
+    .join(orbital_df, on="year_bin", how="left")
 )
 
 # %%
@@ -428,6 +397,14 @@ schemas = {
         "co2_ppm": "FLOAT",
         "co2_radiative_forcing": "FLOAT",
     },
+    "dim_orbital": {
+        "time_id": "INT PRIMARY KEY",
+        "eccentricity": "FLOAT",
+        "obliquity": "FLOAT",
+        "perihelion": "FLOAT",
+        "insolation": "FLOAT",
+        "global_insolation": "FLOAT",
+    },
     "dim_location": {
         "sample_id": "INT PRIMARY KEY",
         "geo_meanLat": "FLOAT",
@@ -447,6 +424,7 @@ schemas_to_update = {
     "fact_temperature": False,
     "dim_time": True,
     "dim_atmosphere": True,
+    "dim_orbital": True,
     "dim_location": True,
 }
 if update_db:

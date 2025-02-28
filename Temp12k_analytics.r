@@ -1,5 +1,8 @@
 library(ggplot2)
 library(dplyr)
+library(reshape2)
+library(scales)
+library(patchwork)
 
 conn_str <- "DRIVER={ODBC Driver 17 for SQL Server};SERVER=(LocalDB)\\MSSQLLocalDB;DATABASE=Temp12k;Trusted_Connection=yes;"
 
@@ -35,18 +38,19 @@ DBI::dbExecute(conn, "
 
 cat("\nRetrieving records from database...\n")
 anomaly_df <- as.data.frame(DBI::dbGetQuery(conn, "
-    SELECT t.anomaly, dt.year_bin, da.co2_ppm, da.co2_radiative_forcing
+    SELECT t.anomaly, dt.year_bin, da.co2_ppm, da.co2_radiative_forcing, do.eccentricity, do.obliquity, do.perihelion, do.insolation, do.global_insolation
     FROM fact_temperature t
     INNER JOIN dim_time dt ON t.time_id = dt.time_id
     INNER JOIN dim_atmosphere da ON t.time_id = da.time_id
-")) # Get corresponding anomaly per year_bin`
+    INNER JOIN dim_orbital do ON t.time_id = do.time_id
+")) # Get corresponding anomaly per year_bin
 
-colnames(anomaly_df) <- c("anomaly", "year_bin", "co2_ppm", "co2_radiative_forcing")
+colnames(anomaly_df) <- c("anomaly", "year_bin", "co2_ppm", "co2_radiative_forcing", "eccentricity", "obliquity", "perihelion", "insolation", "global_insolation")
 
 cat("Shape of anomaly_df:", nrow(anomaly_df), "rows x", ncol(anomaly_df), "columns\n")
 cat("\nAggregating...\n")
 anomaly_df <- anomaly_df %>%
-    group_by(year_bin, co2_ppm, co2_radiative_forcing) %>% # Aggregate anomalies per year_bin
+    group_by(year_bin, co2_ppm, co2_radiative_forcing, eccentricity, obliquity, perihelion, insolation, global_insolation) %>% # Aggregate anomalies per year_bin
     summarise(anomaly = mean(anomaly, na.rm = TRUE)) %>%
     ungroup()
 
@@ -147,6 +151,56 @@ ggplot(anomaly_df %>% mutate(color_bin = case_when(
     theme_classic() +
     scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
 ggsave("Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
+
+group_size <- 1
+glaciation_orbit_df <- anomaly_df %>%
+    filter(year_bin <= 1850) %>% # Exclude post-industrial data
+    select(year_bin, anomaly, co2_ppm, eccentricity, obliquity, perihelion, insolation, global_insolation) %>%
+    mutate(across(-year_bin, rescale)) %>% # Scale all variables from 0 to 1
+    select(-perihelion, -insolation, -obliquity) %>%
+    mutate(group_number = row_number() %/% group_size) %>% # Aggregate every set of group_size bins into 1
+    group_by(group_number) %>%
+    summarise(across(everything(), mean)) %>%
+    ungroup() %>%
+    select(-group_number)
+glaciation_orbit_df_melted <- melt(glaciation_orbit_df, id.vars = "year_bin", variable.name = "variable", value.name = "value")
+
+glaciation_orbit_plot <- ggplot(glaciation_orbit_df_melted %>% filter(year_bin >= -650000), aes(x = year_bin, y = value, color = variable, linetype = variable)) +
+    geom_line(linewidth = 1.3) +
+    labs(x = "Year", y = "Standardized Scale") +
+    annotate("rect", xmin = -75000, xmax = -11000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -43000, y = 1.3, label = "Wisconsin\nGlaciation", color = "blue", vjust = 1.5) +
+    annotate("rect", xmin = -191000, xmax = -130000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -160000, y = 1.3, label = "Illinoian\nGlaciation", color = "blue", vjust = 1.5) +
+    annotate("rect", xmin = -300000, xmax = -250000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -385000, xmax = -345000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -475000, xmax = -430000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -560000, xmax = -530000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -650000, xmax = -620000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -400000, y = 1.3, label = "Pre-Illinoian Glaciations", color = "blue", vjust = 1.5) +
+    annotate("text", x = 15000, y = 1.35, label = "Holocene\nInterglacial\n(Modern)", color = "blue", vjust = 1.5) +
+    scale_linetype_manual(values = c(eccentricity = "solid", global_insolation = "solid", anomaly = "longdash", co2_ppm = "longdash")) +
+    scale_color_manual(values = c(eccentricity = "#7700ff", global_insolation = "#e5ff00", anomaly = "#ff0000", co2_ppm = "#161616")) +
+    theme_classic() +
+    scale_x_continuous(labels = scales::comma) +
+    ggtitle("Glacial Cycles Due to Orbital Variation (Pre-Industrial)") +
+    coord_cartesian(xlim = c(-650000, 20000))
+
+anomaly_orbit_plot <- ggplot(glaciation_orbit_df, aes(x = eccentricity, y = anomaly, color = year_bin >= -12000)) +
+    geom_point() +
+    labs(x = "Eccentricity", y = "Anomaly") +
+    ggtitle("Climate Anomaly vs Orbital Eccentricity") +
+    theme_classic() +
+    theme(legend.position = "none")
+
+anomaly_insolation_plot <- ggplot(glaciation_orbit_df, aes(x = global_insolation, y = anomaly, color = year_bin >= -12000)) +
+    geom_point() +
+    labs(x = "Global Insolation", y = "Anomaly", color = "Year >= -12000 (Post-Ice Age)") +
+    ggtitle("Climate Anomaly vs Global Insolation") +
+    theme_classic()
+combined_plot <- glaciation_orbit_plot / (anomaly_orbit_plot | anomaly_insolation_plot)
+combined_plot
+ggsave("Outputs/orbital_parameters_glacial_cycles_trends.png", width = 15, height = 9)
 
 write.csv(anomaly_df, "Data/anomaly_year.csv", row.names = FALSE)
 

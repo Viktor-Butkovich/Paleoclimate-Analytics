@@ -8,8 +8,8 @@ Temperature anomaly since 1 million years ago:
 Note the very similar patterns of carbon dioxide levels over the last million years:
 ![Long Term CO2 Levels](Outputs/long_term_co2_ppm.png)
 
-Comparison of variations in solar radiation (due to orbital "wobble") with carbon dioxide levels and climate anomaly:
-![Insolation vs CO2 vs Temperature](Outputs/insolation_co2_ppm_anomaly_trends.png)
+Comparison of variations in orbital "wobble" with carbon dioxide levels and climate anomaly:
+![Orbital parameters vs CO2 vs Temperature](Outputs/orbital_parameters_glacial_cycles_trends.png)
 
 Temperature anomaly since 12,000 BC:
 ![Since Ice Age Temperature Anomaly](Outputs/since_ice_age_temperature_anomaly.png)
@@ -28,6 +28,9 @@ https://www.ncei.noaa.gov/access/paleo-search/
 
 Milankovitch Cycles dataset:
 http://www.climatedata.info/forcing/data-downloads/
+
+Milankovitch Simulator:
+https://biocycle.atmos.colostate.edu/shiny/Milankovitch/
 
 Modern CO2 levels dataset:
 https://gml.noaa.gov/ccgg/trends/gl_data.html
