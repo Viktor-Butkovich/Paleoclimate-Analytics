@@ -41,4 +41,6 @@ https://gml.noaa.gov/ccgg/trends/gl_data.html
 2024 mean CO2 level:
 https://www.statista.com/statistics/1091999/atmospheric-concentration-of-co2-historic/
 
-Next, incorporate Milankovitch data as well as recent GHG index data
+Possibly incorporate recent GHG index data
+Attempt at least ARIMAX, Linear Regression-based, and NHITS forecasting models in different possible future scenarios
+    Possibly also include a basic TensorFlow neural network and use an evolutionary algorithm for hyperparameter optimization
