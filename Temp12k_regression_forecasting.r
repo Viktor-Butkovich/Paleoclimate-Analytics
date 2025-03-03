@@ -3,15 +3,15 @@ library(scales)
 library(olsrr)
 
 mse <- function(model) {
-    mean(summary(trimmed_model)$residuals^2)
+    mean(summary(model)$residuals^2)
 }
 
 mae <- function(model) {
-    mean(abs(summary(trimmed_model)$residuals))
+    mean(abs(summary(model)$residuals))
 }
 
 mape <- function(model) {
-    mean(abs(summary(trimmed_model)$residuals) / anomaly_df$anomaly)
+    mean(abs(summary(model)$residuals) / anomaly_df$anomaly)
 }
 
 error_metrics <- function(model) {
@@ -62,6 +62,7 @@ anomaly_df$predicted_anomaly <- unscale(anomaly_df$predicted_anomaly, min_anomal
 
 validation_df <- anomaly_df %>% filter(year_bin >= validation_line)
 print(paste("Unscaled MAE on Validation Data:", round(mean(abs(validation_df$anomaly - validation_df$predicted_anomaly)), 3), "°C"))
+print(paste("Unscaled MSE on Validation Data:", round(mean((validation_df$anomaly - validation_df$predicted_anomaly)^2), 3), "°C^2"))
 
 # Plot the anomaly and predicted anomaly on the same graph
 plot <- ggplot(anomaly_df, aes(x = year_bin)) +
