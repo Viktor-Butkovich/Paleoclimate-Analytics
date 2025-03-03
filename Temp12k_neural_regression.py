@@ -1,4 +1,3 @@
-
 # %%
 # Imports
 print("Loading imports...")
@@ -10,6 +9,8 @@ import polars as pl
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import seaborn as sns
+import random
+import pickle
 
 # %%
 # Load data
@@ -31,40 +32,45 @@ if lag:
 
 X_train, X_test = df[:int(len(df) * 0.9)].drop("anomaly", "year_bin"), df[int(len(df) * 0.9):].drop("anomaly", "year_bin")
 Y_train, Y_test = df[:int(len(df) * 0.9)][['anomaly']], df[int(len(df) * 0.9):][['anomaly']]
+feature_names = X_train.columns
 
 # %%
 # Define model class
 class model:
     def __init__(self, genome):
-        tf.random.set_seed(0)
+        if sum(genome["feature_mask"]) == 0:
+            genome["feature_mask"][random.randrange(len(genome["feature_mask"]))] = 1 # Use at least 1 feature
+        self.genome = genome
         self.epochs = genome["epochs"]
-        learning_rate = genome["learning_rate"]
+        self.learning_rate = genome["learning_rate"]
+        self.feature_mask = genome["feature_mask"]
         # Define a simple sequential model
         layers = []
-        for idx, layer in enumerate(genome["layers"]):
+        for idx in range(genome["num_layers"]):
             if idx == 0:
-                layers.append(tf.keras.layers.Dense(layer, activation='relu', input_shape=(X_train.shape[1],)))
+                layers.append(tf.keras.layers.Dense(genome["layer_size"], activation='relu', input_shape=(sum(self.feature_mask),)))
             else:
-                layers.append(tf.keras.layers.Dense(layer, activation='relu'))
+                layers.append(tf.keras.layers.Dense(genome["layer_size"], activation='relu'))
         layers.append(tf.keras.layers.Dense(1))
 
         self.model = tf.keras.Sequential(layers)
 
         # Compile the model
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss='mse')
+        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate), loss='mse')
+
+    def get_masked_features(self, X):
+        return X.select(pl.col(col) for col, mask in zip(X.columns, self.feature_mask) if mask == 1)
 
     def evaluate(self):
         # Train the model
-
-        history = self.model.fit(X_train, Y_train, epochs=self.epochs, validation_split=0.1, verbose=0)
+        tf.random.set_seed(0)
+        history = self.model.fit(self.get_masked_features(X_train), Y_train, epochs=self.epochs, validation_split=0.1, verbose=0)
 
         # Evaluate the model
-        loss = self.model.evaluate(X_test, Y_test)
-        print(f"Test loss: {loss ** 0.5}")
-        self.model.predict(df.drop("year_bin", "anomaly"))
-        print("working")
-        prediction_df = df.with_columns(pl.Series(name="predicted_anomaly", values=self.model.predict(df.drop("year_bin", "anomaly")).flatten()))
-        return loss, prediction_df
+        loss = self.model.evaluate(self.get_masked_features(X_test), Y_test) # verbose = 0
+        prediction_df = df.with_columns(pl.Series(name="predicted_anomaly", values=self.model.predict(self.get_masked_features(df), verbose = 0).flatten()))
+        self.fitness = loss
+        self.predictions = prediction_df
 
     def plot(self, prediction_df):
         # Create a DataFrame for seaborn
@@ -81,14 +87,84 @@ class model:
         plt.legend()
         plt.show()
 
+    def __str__(self):
+        feature_names_selected = self.get_masked_features(X_train).columns
+        return f"fitness: {self.fitness:.3f}, epochs: {self.epochs}, learning_rate: {self.learning_rate:.5f}, layer_size: {self.genome['layer_size']}, num_layers: {self.genome['num_layers']}, feature_mask: {feature_names_selected}"
+
+
 # %%
 # Model training
-sample_model = model({
-    "epochs": 50,
-    "learning_rate": 0.001,
-    "layers": [8, 8]
-})
-fitness, predictions = sample_model.evaluate()
-sample_model.plot(predictions)
+
+def initialize_individual():
+    return {
+        "epochs": random.randrange(5, 41),
+        "learning_rate": random.uniform(1e-4, 5 * 1e-2),
+        "num_layers": random.choice([1, 2, 3, 4, 5, 6]),
+        "layer_size": random.choice([4, 8, 16, 24, 32, 40, 48]),
+        "feature_mask": [random.choice([0, 1]) for _ in range(X_train.shape[1])]
+    }
+
+random.seed(0)
+
+def evolve() -> list:
+    population_size = 30
+    mutation_rate = 0.25
+    population = [model(initialize_individual()) for _ in range(population_size)]
+
+    for individual in population:
+        individual.evaluate()
+    # Sort population by fitness in ascending order
+    population.sort(key=lambda x: x.fitness)
+    best_individual = population[0]
+    print(f"Initial generation: Best individual {best_individual}")
+    best_individual.plot(best_individual.predictions)
+
+    for generation_number in range(10):
+        print(f"Generation {generation_number}")
+        new_population = [best_individual]
+        parent_weights = [1/individual.fitness for individual in population]
+        child_genomes = []
+        for _ in range(population_size - 1):
+            parents = random.choices(population, k=2, weights=parent_weights)
+            inheritance_mask = [random.choice([0, 1]) for _ in range(len(parents[0].genome))]
+            child_1_genome = {key: parents[0].genome[key] if mask == 0 else parents[1].genome[key] for mask, key in zip(inheritance_mask, parents[0].genome)}
+            child_genomes.append(child_1_genome)
+
+            child_2_genome = {key: parents[1].genome[key] if mask == 0 else parents[0].genome[key] for mask, key in zip(inheritance_mask, parents[0].genome)}
+            child_genomes.append(child_2_genome)
+        for child_genome in child_genomes:
+            for key in child_genome:
+                if random.random() < mutation_rate:
+                    if key == "feature_mask":
+                        child_genome[key][random.randrange(len(child_genome["feature_mask"]))] = random.choice([0, 1])
+                    elif key == "num_layers":
+                        child_genome[key] += random.choice([-1, 1])
+                        child_genome[key] = max(1, child_genome[key])
+                    elif key == "layer_size":
+                        child_genome[key] += random.choice([-4, 4])
+                        child_genome[key] = max(1, child_genome[key])
+                    elif key == "epochs":
+                        child_genome[key] += random.choice([-10, 10])
+                        child_genome[key] = max(1, child_genome[key])
+                    elif key == "learning_rate":
+                        child_genome[key] *= random.uniform(0.5, 1.5)
+            population.append(model(child_genome))
+
+        population = [model(initialize_individual()) for _ in range(population_size)]
+
+        for individual in population:
+            individual.evaluate()
+        # Sort population by fitness in ascending order
+        population.sort(key=lambda x: x.fitness)
+        if population[0].fitness <= best_individual.fitness:
+            best_individual = population[0]
+            print(f"Generation {generation_number}: New best individual {population[0]}")
+            best_individual.plot(best_individual.predictions)
+        else:
+            print(f"Generation {generation_number}: Same best individual")
+        population = population[:population_size]
+        with open("best_individual_genome.pkl", "wb") as f:
+            pickle.dump(best_individual.genome, f)
+evolve()
 
 # %%
