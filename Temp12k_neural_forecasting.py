@@ -1,16 +1,12 @@
 # %%
 print("Loading imports...")
 
-# Usage sample provided in https://nixtlaverse.nixtla.io/neuralforecast/models.nhits.html
-
-# import pandas as pd
 import polars as pl
 import matplotlib.pyplot as plt
-
 from neuralforecast import NeuralForecast
 from neuralforecast.models import NHITS
 from neuralforecast.losses.pytorch import DistributionLoss
-from neuralforecast.utils import AirPassengersPanel, AirPassengersStatic
+from sklearn.metrics import mean_squared_error
 
 # %%
 print("Loading data...")
@@ -31,7 +27,7 @@ print("Fitting model...")
 horizon = len(Y_test)
 model = NHITS(
     h=horizon,
-    input_size=horizon * 5,
+    input_size=horizon * 2,
     loss=DistributionLoss(distribution="StudentT", level=[80, 90], return_params=True),
     futr_exog_list=[
         "co2_ppm",
@@ -42,6 +38,10 @@ model = NHITS(
         "insolation",
         "global_insolation",
     ],
+    stack_types=["identity", "identity", "identity"],
+    n_blocks=[1, 1, 1],
+    mlp_units=60 * [[24, 24]],
+    n_pool_kernel_size=[2, 2, 1],
     n_freq_downsample=[2, 1, 1],
     scaler_type="robust",
     max_steps=200,
@@ -54,11 +54,11 @@ model = NHITS(
 fcst = NeuralForecast(models=[model], freq="1d")
 fcst.fit(df=Y_train, val_size=horizon)
 
-# %%
 print("Making forecasts")
-forecasts = fcst.predict(futr_df=Y_test)
+forecasts = fcst.predict(
+    futr_df=Y_test, static_df=Y_train.select(["unique_id"]).unique()
+)
 
-# %%
 print("Plotting results...")
 # Plot quantile predictions
 
@@ -67,6 +67,17 @@ Y_plot = (
     .with_columns((pl.col("ds").cast(pl.Int32) * 2000).alias("year_bin"))
     .drop("ds")
 )
+
+mse = mean_squared_error(Y_plot["y"], Y_plot["NHITS"])
+print(f"Mean Squared Error: {mse}")
+# No exogeneous - MSE 16.327
+# Exogeneous, default size - ME 13.322
+# Exogeneous, x128 size - ME 12.9
+# Exogeneous, x24 size - ME 14.86
+# Exogeneous, 3 * 24 size - ME 11.99
+# Exogeneous, 60 * 24 size - ME 9.95
+# Exogeneous, 60 * 24 size, input size horizon * 2 - ME 4.59
+
 plt.figure(figsize=(10, 6))
 
 plt.plot(Y_plot["year_bin"], Y_plot["y"], label="Actual Anomaly")
