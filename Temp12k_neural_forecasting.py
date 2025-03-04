@@ -91,3 +91,31 @@ plt.show()
 print("Completed!")
 
 # %%
+print("Plotting results...")
+# Plot quantile predictions
+import pandas as pd
+
+Y_hat_df = (
+    forecasts.to_pandas().reset_index(drop=False).drop(columns=["unique_id", "ds"])
+)
+plot_df = pd.concat([Y_test.to_pandas(), Y_hat_df], axis=1)
+plot_df = pd.concat([Y_train.to_pandas(), plot_df])
+
+# plot_df = plot_df[plot_df.unique_id=='Airline1'].drop('unique_id', axis=1)
+plt.plot(plot_df["ds"], plot_df["y"], c="black", label="True")
+plt.plot(plot_df["ds"], plot_df["NHITS-median"], c="blue", label="median")
+plt.fill_between(
+    x=plot_df["ds"][-12:],
+    y1=plot_df["NHITS-lo-90"][-12:].values,
+    y2=plot_df["NHITS-hi-90"][-12:].values,
+    alpha=0.4,
+    label="90% Confidence Interval",
+)
+plt.legend()
+plt.grid()
+plt.plot()
+plt.show()
+
+print("Completed!")
+
+# %%

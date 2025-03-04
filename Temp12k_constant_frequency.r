@@ -23,3 +23,15 @@ df_aggregated <- df %>%
 print(tail(df_aggregated))
 
 write.csv(df_aggregated, "Data/anomaly_training_ready.csv", row.names = FALSE)
+
+# Calculate the delta for each variable
+df_deltas <- df_aggregated %>%
+    arrange(year_bin) %>%
+    mutate(across(-c(year_bin, anomaly), ~ .x - lag(.x), .names = "delta_{col}")) %>%
+    mutate(across(starts_with("delta_"), ~ rescale(.x))) %>%
+    filter(across(everything(), ~ !is.na(.)))
+
+# Print the first few rows of the data with deltas
+print(tail(df_deltas))
+
+write.csv(df_deltas, "Data/anomaly_training_ready_with_deltas.csv", row.names = FALSE)
