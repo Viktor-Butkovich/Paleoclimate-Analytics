@@ -44,3 +44,8 @@ https://www.statista.com/statistics/1091999/atmospheric-concentration-of-co2-his
 Possibly incorporate recent GHG index data
 Attempt at least ARIMAX, Linear Regression-based, and NHITS forecasting models in different possible future scenarios
     Possibly also include a basic TensorFlow neural network and use an evolutionary algorithm for hyperparameter optimization
+Also look into using smoothed variables with s() to reduce noise and for easier plotting
+    s(variable) returns a smoothed version - from the mgcv package
+    Try a GAM - generalized additive model, allows a linear response variable to depend linearly on predictor variables
+        Simple method of time series prediction with future exogenous variables
+    Try diff-based regression, using changes in each variable to predict change in anomaly, rather than absolute amounts

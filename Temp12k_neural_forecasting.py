@@ -20,6 +20,7 @@ df = (
 )
 Y_train = df[: int(len(df) * 0.9)]
 Y_test = df[int(len(df) * 0.9) :]
+# Try making y_test the same size as the validation set from the linear regression trials - compare performance on the same data
 
 # %%
 print("Fitting model...")
@@ -101,13 +102,12 @@ Y_hat_df = (
 plot_df = pd.concat([Y_test.to_pandas(), Y_hat_df], axis=1)
 plot_df = pd.concat([Y_train.to_pandas(), plot_df])
 
-# plot_df = plot_df[plot_df.unique_id=='Airline1'].drop('unique_id', axis=1)
 plt.plot(plot_df["ds"], plot_df["y"], c="black", label="True")
 plt.plot(plot_df["ds"], plot_df["NHITS-median"], c="blue", label="median")
 plt.fill_between(
-    x=plot_df["ds"][-12:],
-    y1=plot_df["NHITS-lo-90"][-12:].values,
-    y2=plot_df["NHITS-hi-90"][-12:].values,
+    x=plot_df["ds"][-horizon:],
+    y1=plot_df["NHITS-lo-90"][-horizon:].values,
+    y2=plot_df["NHITS-hi-90"][-horizon:].values,
     alpha=0.4,
     label="90% Confidence Interval",
 )
