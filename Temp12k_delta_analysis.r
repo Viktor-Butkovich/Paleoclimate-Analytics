@@ -22,36 +22,66 @@ anomaly_train <- anomaly_df %>% filter(year_bin <= validation_line)
 anomaly_validation <- anomaly_df %>% filter(year_bin > validation_line)
 
 print("Training...")
-ctrl <- trainControl(method = "cv", number = 10)
-model_type <- "lm"
-if (model_type == "lm") {
-    model <- lm(delta_anomaly ~ . - year_bin - anomaly, data = anomaly_train)
-} else if (model_type == "nn") {
-    grid <- expand.grid(.size = seq(5, 20, 5), .decay = seq(0.1, 0.5, 0.1))
-    model <- train(delta_anomaly ~ . - year_bin - anomaly, method = "nnet", trControl = ctrl, tuneGrid = grid, preProcess = c("center", "scale"), linout = TRUE, trace = FALSE, data = anomaly_train)
-} else if (model_type == "regression_tree") {
-    model <- train(delta_anomaly ~ . - year_bin - anomaly, method = "rpart", trControl = ctrl, tuneLength = 200, data = anomaly_train)
-} else if (model_type == "random_forest") {
-    grid <- expand.grid(.mtry = c(1:10))
-    model <- train(delta_anomaly ~ . - year_bin - anomaly, method = "rf", trControl = ctrl, tuneGrid = grid, data = anomaly_train)
-} else {
-    stop("Invalid model type")
+ctrl <- trainControl(method = "cv", number = 10, savePredictions = "final", classProbs = FALSE)
+
+
+model_config <- list(
+    lm = TRUE,
+    nnet = FALSE,
+    rpart = FALSE,
+    rf = FALSE
+) # Choose models to include
+
+models <- list()
+
+# Train individual models
+if (model_config$lm) {
+    model_lm <- train(delta_anomaly ~ . - year_bin - anomaly, data = anomaly_train, method = "lm", trControl = ctrl)
+    models[["lm"]] <- model_lm
 }
-print(summary(model))
+if (model_config$nnet) {
+    model_nnet <- train(delta_anomaly ~ . - year_bin - anomaly, data = anomaly_train, method = "nnet", trControl = ctrl, tuneGrid = expand.grid(.size = seq(5, 20, 5), .decay = seq(0.1, 0.5, 0.1)), preProcess = c("center", "scale"), linout = TRUE, trace = FALSE)
+    models[["nnet"]] <- model_nnet
+}
+if (model_config$rpart) {
+    model_rpart <- train(delta_anomaly ~ . - year_bin - anomaly, data = anomaly_train, method = "rpart", trControl = ctrl, tuneLength = 200)
+    models[["rpart"]] <- model_rpart
+}
+if (model_config$rf) {
+    model_rf <- train(delta_anomaly ~ . - year_bin - anomaly, data = anomaly_train, method = "rf", trControl = ctrl, tuneGrid = expand.grid(.mtry = c(1:10)))
+    models[["rf"]] <- model_rf
+}
+
+predict_ensemble <- function(models, newdata, ...) {
+    predictions <- lapply(models, function(model) predict(model, newdata = newdata, ...))
+    return(as.data.frame(predictions))
+}
+
+weighted_predict_ensemble <- function(ensemble_weight_model, models, newdata, ...) {
+    predictions <- predict_ensemble(models, newdata = newdata, ...)
+    combined_predictions <- predict(ensemble_weight_model, newdata = predictions)
+    return(combined_predictions)
+}
+
+ensemble_training_predictions <- predict_ensemble(models, newdata = anomaly_train)
+ensemble_training_predictions$delta_anomaly <- anomaly_train$delta_anomaly
+ensemble_model <- train(delta_anomaly ~ ., data = ensemble_training_predictions, method = "lm", trControl = ctrl)
+
+print(summary(ensemble_model))
 
 anomaly_train <- anomaly_train %>%
-    mutate(predicted_anomaly = lag(anomaly) + predict(model, newdata = anomaly_train))
+    mutate(predicted_anomaly = lag(anomaly) + weighted_predict_ensemble(ensemble_model, models, newdata = anomaly_train))
 
-cumulative_delta_forecast <- function(last_observed_anomaly, model, future_exogenous) {
-    predicted_delta_anomaly <- predict(model, newdata = future_exogenous)
+cumulative_delta_forecast <- function(last_observed_anomaly, future_exogenous) {
+    predicted_delta_anomaly <- weighted_predict_ensemble(ensemble_model, models, newdata = future_exogenous)
     return(last_observed_anomaly + cumsum(predicted_delta_anomaly))
 }
 
-anomaly_validation$predicted_anomaly <- cumulative_delta_forecast(tail(anomaly_train$anomaly, 1), model, anomaly_validation)
+anomaly_validation$predicted_anomaly <- cumulative_delta_forecast(tail(anomaly_train$anomaly, 1), anomaly_validation)
 # Each predicted anomaly within previous data is predicted from the previous anomaly
 # Future anomalies are extrapolated from the last known observation and the cumulative sum of predicted deltas, based on deltas of global parameters
 
-anomaly_df <- rbind(anomaly_train, anomaly_validation)
+anomaly_df <- bind_rows(anomaly_train, anomaly_validation)
 
 
 plot <- ggplot(anomaly_df, aes(x = year_bin)) +
