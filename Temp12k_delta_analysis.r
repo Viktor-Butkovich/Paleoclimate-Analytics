@@ -15,7 +15,18 @@ anomaly <- anomaly_df$anomaly
 original_anomaly <- anomaly_df$anomaly[1] - anomaly_df$delta_anomaly[1]
 
 anomaly_df <- anomaly_df %>%
-    select(-c(co2_ppm, co2_radiative_forcing, eccentricity, obliquity, perihelion, global_insolation, insolation, delta_co2_ppm, delta_insolation, delta_global_insolation))
+    select(
+        year_bin,
+        anomaly,
+        delta_anomaly,
+        # delta_eccentricity_wave,
+        delta_eccentricity,
+        delta_co2_radiative_forcing,
+        delta_obliquity,
+        # delta_insolation,
+        # delta_global_insolation,
+        delta_perihelion
+    )
 
 validation_line <- -100000
 anomaly_train <- anomaly_df %>% filter(year_bin <= validation_line)
