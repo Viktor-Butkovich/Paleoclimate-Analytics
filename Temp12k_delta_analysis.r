@@ -81,6 +81,7 @@ ensemble_model <- train(delta_anomaly ~ ., data = ensemble_training_predictions,
 print(summary(ensemble_model))
 
 anomaly_train <- anomaly_train %>%
+    mutate(predicted_delta_anomaly = weighted_predict_ensemble(ensemble_model, models, newdata = anomaly_train)) %>%
     mutate(predicted_anomaly = lag(anomaly) + weighted_predict_ensemble(ensemble_model, models, newdata = anomaly_train))
 
 cumulative_delta_forecast <- function(last_observed_anomaly, future_exogenous) {
@@ -88,6 +89,7 @@ cumulative_delta_forecast <- function(last_observed_anomaly, future_exogenous) {
     return(last_observed_anomaly + cumsum(predicted_delta_anomaly))
 }
 
+anomaly_validation$predicted_delta_anomaly <- weighted_predict_ensemble(ensemble_model, models, newdata = anomaly_validation)
 anomaly_validation$predicted_anomaly <- cumulative_delta_forecast(tail(anomaly_train$anomaly, 1), anomaly_validation)
 # Each predicted anomaly within previous data is predicted from the previous anomaly
 # Future anomalies are extrapolated from the last known observation and the cumulative sum of predicted deltas, based on deltas of global parameters
@@ -112,5 +114,25 @@ plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     ) +
     theme_classic() +
     scale_y_continuous(limits = c(-10, 10)) +
+    scale_x_continuous(labels = scales::comma)
+ggsave("Outputs/delta_based_anomaly_forecast.png", plot, width = 10, height = 6)
+
+plot <- ggplot(anomaly_df, aes(x = year_bin)) +
+    geom_line(aes(y = delta_anomaly, color = "Actual Delta Anomaly")) +
+    geom_line(aes(y = predicted_delta_anomaly, color = "Predicted Delta Anomaly")) +
+    geom_vline(xintercept = validation_line, linetype = "dashed", color = "blue") +
+    annotate("rect", xmin = validation_line, xmax = max(anomaly_df$year_bin), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey") +
+    annotate("text", x = validation_line + 10000, y = 2.5, label = "Validation", hjust = 0, color = "black") +
+    annotate("text", x = validation_line - 10000, y = 2.5, label = "Training", hjust = 1, color = "black") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
+    annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#df00a7") +
+    labs(
+        title = "Forecasted Climate Anomaly (-650 kya to 1700)",
+        x = "Year Bin",
+        y = "Anomaly",
+        color = "Legend"
+    ) +
+    theme_classic() +
+    # scale_y_continuous(limits = c(-10, 10)) +
     scale_x_continuous(labels = scales::comma)
 ggsave("Outputs/delta_anomaly_forecast.png", plot, width = 10, height = 6)
