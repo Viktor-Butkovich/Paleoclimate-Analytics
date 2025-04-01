@@ -1,6 +1,6 @@
 # %%
 # Imports
-from modules import data_types, db, modern_temperature, util
+from modules import data_types, modern_temperature, util
 import pickle as pkl
 import polars as pl
 import json
@@ -369,6 +369,36 @@ orbital_df = orbital_df.filter(pl.col("year") <= 2025).rename(
 orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
 
 # %%
+# Incorporate Beryllium-10 sediment data from Anderson 2018 records
+file_paths = [
+    "Data/anderson2018-u1428-Extracted.csv",
+    "Data/anderson2018-u1429-Extracted.csv",
+    "Data/anderson2018-u1430-Extracted.csv",
+]
+
+sediment_df = pl.concat(
+    [pl.read_csv(file_path) for file_path in file_paths], how="vertical"
+)
+
+# Add a year column based on age_ka-BP
+sediment_df = (
+    sediment_df.with_columns(((1950 - (pl.col("age_ka-BP") * 1000)).alias("year")))
+    .filter(pl.col("year") >= min(valid_year_bins))
+    .select(["year", "Be_ppm"])
+)
+
+# Assign year bins and aggregate Be10 concentrations
+sediment_df = util.year_bins_transform(sediment_df, valid_year_bins)
+
+# Apply smoothing to the be_ppm values using a rolling mean
+window_size = 5  # Define the window size for smoothing
+sediment_df = sediment_df.with_columns(
+    pl.col("Be_ppm")
+    .rolling_mean(window_size, center=True, min_samples=1)
+    .alias("be_ppm")
+)
+
+# %%
 # Join temperature samples, CO2 data, and orbital data
 # Final dataframe combines climate all over the world since 1850, temperature measurements since 1 mya, CO2 measurements since 800 kya, GHG measurements since 1979, and orbital
 #   simulation data
@@ -376,6 +406,7 @@ temperature_df = (
     temperature_df.join(co2_df, on="year_bin", how="left")
     .with_columns(pl.col("co2_ppm").cast(pl.Float64))
     .join(orbital_df, on="year_bin", how="left")
+    .join(sediment_df, on="year_bin", how="left")
 )
 
 # %%
@@ -405,6 +436,10 @@ schemas = {
         "insolation": "FLOAT",
         "global_insolation": "FLOAT",
     },
+    "dim_sediment": {
+        "time_id": "INT PRIMARY KEY",
+        "be_ppm": "FLOAT",
+    },
     "dim_location": {
         "sample_id": "INT PRIMARY KEY",
         "geo_meanLat": "FLOAT",
@@ -421,22 +456,31 @@ tables = {
 # Load the temperature data to the SQL server database
 update_db = True
 schemas_to_update = {
-    "fact_temperature": False,
+    "fact_temperature": True,
     "dim_time": True,
     "dim_atmosphere": True,
     "dim_orbital": True,
+    "dim_sediment": True,
     "dim_location": True,
 }
+db_mode = "sqlite"
+if db_mode == "sql_server":
+    from modules import db_sqlalchemy as db
+elif db_mode == "sqlite":
+    from modules import db_sqlite as db
 if update_db:
     db.connect()
-    for table_name, schema in schemas.items():
-        if schemas_to_update[table_name]:
-            print(f"Updating {table_name}...")
-            if db.table_exists(table_name):
-                db.drop_table(table_name)
-            tables[table_name].write_database(
-                table_name, db.conn, if_table_exists="replace"
-            )
+    try:
+        for table_name, schema in schemas.items():
+            if schemas_to_update[table_name]:
+                print(f"Updating {table_name}...")
+                if db.table_exists(table_name):
+                    db.drop_table(table_name)
+                tables[table_name].write_database(
+                    table_name, db.conn, if_table_exists="replace"
+                )
+    except Exception as e:
+        print(e)
     db.close()
     print("Finished updating database")
 
