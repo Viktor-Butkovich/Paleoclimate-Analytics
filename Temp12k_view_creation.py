@@ -41,6 +41,10 @@ fact_temperature = fact_temperature.select(pl.exclude("time_id"))
 print(fact_temperature)
 
 # %%
+# Storing raw data
+fact_temperature.sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv")
+
+# %%
 # Preprocess the data for analysis
 
 # Filter data for the specified year range
@@ -80,6 +84,6 @@ print(preprocessed)
 
 # %%
 # Storing preprocessed data
-preprocessed.write_csv("Outputs/long_term_anomaly.csv")
+preprocessed.write_csv("Outputs/long_term_global_anomaly_view.csv")
 
 # %%

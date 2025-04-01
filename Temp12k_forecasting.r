@@ -1,3 +1,5 @@
+# Deprecated
+
 library(tidyverse)
 
 # Check if the file Data/anomaly_year.csv exists
