@@ -12,8 +12,10 @@ def get_year_bin(year: int) -> int:
         return round(year / 250) * 250
     elif year < 1850:  # Nearest 50
         return round(year / 50) * 50
-    else:  # Nearest 1
+    elif year < 2025: # Nearest 1
         return round(year)
+    else: # Next 1000
+        return round((year + 1000) / 1000) * 1000
 
 
 def include_sample(sample: data_types.Temp12k_TS_sample) -> bool:
@@ -60,4 +62,14 @@ def year_bins_transform(df: pl.DataFrame, valid_year_bins: List[int]) -> pl.Data
             for col in df.columns
         ]
     )
+
+    for col in ["co2_ppm", "co2_radiative_forcing", "anomaly", "be_ppm"]:  # Remove future filled null values
+        if col in df.columns:
+            df = df.with_columns(
+                pl.when(pl.col("year_bin") > 2025)
+                .then(None)
+                .otherwise(pl.col(col))
+                .alias(col)
+            )
+
     return df

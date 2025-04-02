@@ -35,8 +35,13 @@ print(fact_temperature)
 # %%
 # Join fact_temperature with the dimensions
 print(f"Joining fact_temperature with dimensions")
+fact_temperature = fact_temperature.join(dimensions_dict["dim_time"], on="time_id", how="right")
+# Populate all time ID's, even if not all data is available for future times
+
 for dim_name, dim_df in dimensions_dict.items():
-    fact_temperature = fact_temperature.join(dim_df, on="time_id", how="inner")
+    if dim_name == "dim_time":
+        continue  # Skip dim_time, which has already been joined
+    fact_temperature = fact_temperature.join(dim_df, on="time_id", how="left")
 fact_temperature = fact_temperature.select(pl.exclude("time_id"))
 print(fact_temperature)
 
@@ -49,7 +54,7 @@ fact_temperature.sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv
 
 # Filter data for the specified year range
 preprocessed = fact_temperature.filter(
-    (pl.col("year_bin") >= -650000) & (pl.col("year_bin") < 1700)
+    (pl.col("year_bin") >= -650000)
 )
 
 # Aggregate data to have a constant frequency of 2000 years
@@ -65,7 +70,7 @@ delta_columns = [
     for col in preprocessed.columns
     if col != "year_bin"
 ]
-preprocessed = preprocessed.with_columns(delta_columns).drop_nulls()
+preprocessed = preprocessed.with_columns(delta_columns).filter(pl.col("year_bin") != preprocessed["year_bin"].min())
 
 # Rescale columns except 'year_bin' and 'anomaly'
 scaler = MinMaxScaler()
@@ -74,7 +79,11 @@ columns_to_rescale = [
     for col in preprocessed.columns
     if col not in ["year_bin", "anomaly", "delta_anomaly", "degC", "delta_degC"]
 ]
-rescaled_data = scaler.fit_transform(preprocessed.select(columns_to_rescale).to_numpy())
+
+# Exclude outlier year bin 2000 from min/max consideration
+filtered_data = preprocessed.filter(pl.col("year_bin") != 2000)
+scaler.fit(filtered_data.select(columns_to_rescale).to_numpy())
+rescaled_data = scaler.transform(preprocessed.select(columns_to_rescale).to_numpy())
 rescaled_df = pl.DataFrame(rescaled_data, schema=columns_to_rescale)
 
 preprocessed = preprocessed.with_columns(

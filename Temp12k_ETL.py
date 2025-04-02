@@ -320,6 +320,14 @@ temperature_df = temperature_df.with_columns(
 valid_year_bins = list(temperature_df["year_bin"].unique())
 
 # %%
+# Incorporate orbital simulation data (Milankovitch cycles)
+orbital_df = pl.read_csv("Data/milankovitch_sim_extracted.csv")
+orbital_df = orbital_df.rename({"global.insolation": "global_insolation"})
+orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
+valid_year_bins += list(orbital_df["year_bin"].unique())
+valid_year_bins = sorted(set(valid_year_bins)) # Add future simulated values to valid year bins
+
+# %%
 # Incorporate CO2 data from ice core samples from last 800,000 years
 co2_df = pl.read_csv("Data/ice_core_800k_co2_extracted.csv")
 co2_df = (co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))).drop(
@@ -359,14 +367,6 @@ co2_df = co2_df.group_by("year_bin").agg(
     pl.col("co2_ppm").last().alias("co2_ppm"),
     pl.col("co2_radiative_forcing").last().alias("co2_radiative_forcing"),
 )
-
-# %%
-# Incorporate orbital simulation data (Milankovitch cycles)
-orbital_df = pl.read_csv("Data/milankovitch_sim_extracted.csv")
-orbital_df = orbital_df.filter(pl.col("year") <= 2025).rename(
-    {"global.insolation": "global_insolation"}
-)
-orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
 
 # %%
 # Incorporate Beryllium-10 sediment data from Anderson 2018 records
@@ -451,6 +451,19 @@ tables = {
     for name, schema in schemas.items()
 }
 # Create DataFrames for each schema
+
+# %%
+# Add future simulated values
+tables["dim_orbital"] = orbital_df.rename({"year_bin": "time_id"})
+
+# Populate dim_time with any time_id's in dim_orbital that aren't in dim_time yet
+existing_time_ids = set(tables["dim_time"]["time_id"].to_list())
+new_time_ids = set(tables["dim_orbital"]["time_id"].to_list()) - existing_time_ids
+
+if new_time_ids:
+    new_time_rows = pl.DataFrame({"time_id": list(new_time_ids), "year_bin": list(new_time_ids)})
+    tables["dim_time"] = pl.concat([tables["dim_time"], new_time_rows]).unique()
+
 
 # %%
 # Load the temperature data to the SQL server database
