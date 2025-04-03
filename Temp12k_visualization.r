@@ -3,8 +3,8 @@ library(reshape2)
 library(scales)
 library(patchwork)
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv")
-anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv")
+anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
@@ -150,4 +150,27 @@ anomaly_insolation_plot <- ggplot(glaciation_orbit_df, aes(x = global_insolation
 combined_plot <- glaciation_orbit_plot / (anomaly_orbit_plot | anomaly_insolation_plot)
 combined_plot
 ggsave("Outputs/orbital_parameters_glacial_cycles_trends.png", width = 15, height = 9)
+
+solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
+    geom_line(aes(y = rescale(solar_modulation), color = "Solar Modulation (Φ)"), linewidth = 1.2) +
+    geom_line(aes(y = rescale(anomaly), color = "Temperature Anomaly (°C)"), linewidth = 1.2) +
+    labs(x = "Year", y = "Value", color = "Legend") +
+    annotate("rect", xmin = -75000, xmax = -11000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -43000, y = max(anomaly_df$solar_modulation, na.rm = TRUE) * 0.9, label = "Wisconsin\nGlaciation", color = "blue", vjust = 1.5) +
+    annotate("rect", xmin = -191000, xmax = -130000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -160000, y = max(anomaly_df$solar_modulation, na.rm = TRUE) * 0.9, label = "Illinoian\nGlaciation", color = "blue", vjust = 1.5) +
+    annotate("rect", xmin = -300000, xmax = -250000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -385000, xmax = -345000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -475000, xmax = -430000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -560000, xmax = -530000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("rect", xmin = -650000, xmax = -620000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
+    annotate("text", x = -400000, y = max(anomaly_df$solar_modulation, na.rm = TRUE) * 0.9, label = "Pre-Illinoian Glaciations", color = "blue", vjust = 1.5) +
+    theme_classic() +
+    scale_x_continuous(labels = scales::comma) +
+    scale_color_manual(values = c("Solar Modulation (Φ)" = "orange", "Temperature Anomaly (°C)" = "red")) +
+    ggtitle("Solar Modulation and Temperature Anomaly with Ice Age Overlays")
+
+solar_modulation_plot
+ggsave("Outputs/long_term_solar_modulation_plot.png", solar_modulation_plot, width = 12, height = 6)
+
 print("Plots saved successfully")

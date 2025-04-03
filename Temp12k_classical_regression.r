@@ -3,13 +3,27 @@ library(reshape2)
 library(scales)
 library(patchwork)
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv")
-anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv")
+anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
 
 omit_co2 <- TRUE
 if (omit_co2) {
-    anomaly_df <- anomaly_df %>% select(-c(co2_ppm, co2_radiative_forcing, delta_co2_ppm, delta_co2_radiative_forcing))
+    anomaly_df <- anomaly_df %>% select(-c(co2_ppm, co2_radiative_forcing, delta_co2_ppm, delta_co2_radiative_forcing, be_ppm, delta_be_ppm, VADM, delta_VADM))
 }
+
+anomaly_df <- anomaly_df %>%
+    mutate(across(
+        .cols = !matches("year_bin|anomaly"),
+        .fns = list(squared = ~ .^2),
+        .names = "{.col}_squared"
+    ))
+
+anomaly_df <- anomaly_df %>% # Try to capture 40,000 and 100,000 year cycles
+    mutate(
+        anomaly_lag_20 = lag(anomaly, 20),
+        anomaly_lag_50 = lag(anomaly, 50)
+    ) %>%
+    drop_na()
 
 validation_line <- -100000
 train_anomaly_df <- anomaly_df %>% filter(year_bin < validation_line)
@@ -71,7 +85,12 @@ print(summary(linear_delta_model))
 linear_delta_model_predicted_anomaly <- predict_delta_model(linear_delta_model, anomaly_df, validation_line)
 plot_predictions(anomaly_df, linear_delta_model_predicted_anomaly, validation_line, "linear_delta_model_predictions")
 
-linear_model <- produce_model(lm, train_anomaly_df)
+linear_model <- produce_model(lm, train_anomaly_df %>% select(-c(anomaly_lag_20, anomaly_lag_50)))
 print(summary(linear_model))
 linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
 plot_predictions(anomaly_df, linear_model_predicted_anomaly, validation_line, "linear_model_predictions")
+
+linear_model <- produce_model(lm, train_anomaly_df)
+print(summary(linear_model))
+linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
+plot_predictions(anomaly_df, linear_model_predicted_anomaly, validation_line, "linear_model_predictions_lagged")

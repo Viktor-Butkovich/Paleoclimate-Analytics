@@ -12,9 +12,9 @@ def get_year_bin(year: int) -> int:
         return round(year / 250) * 250
     elif year < 1850:  # Nearest 50
         return round(year / 50) * 50
-    elif year < 2025: # Nearest 1
+    elif year < 2025:  # Nearest 1
         return round(year)
-    else: # Next 1000
+    else:  # Next 1000
         return round((year + 1000) / 1000) * 1000
 
 
@@ -63,7 +63,13 @@ def year_bins_transform(df: pl.DataFrame, valid_year_bins: List[int]) -> pl.Data
         ]
     )
 
-    for col in ["co2_ppm", "co2_radiative_forcing", "anomaly", "be_ppm"]:  # Remove future filled null values
+    for col in [
+        "co2_ppm",
+        "co2_radiative_forcing",
+        "anomaly",
+        "be_ppm",
+        "VADM",
+    ]:  # Remove future filled null values
         if col in df.columns:
             df = df.with_columns(
                 pl.when(pl.col("year_bin") > 2025)

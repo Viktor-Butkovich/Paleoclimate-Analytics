@@ -1,6 +1,6 @@
 # %%
 # Imports
-from modules import data_types, modern_temperature, util
+from modules import data_types, modern_temperature, solar_modulation, util
 import pickle as pkl
 import polars as pl
 import json
@@ -325,7 +325,9 @@ orbital_df = pl.read_csv("Data/milankovitch_sim_extracted.csv")
 orbital_df = orbital_df.rename({"global.insolation": "global_insolation"})
 orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
 valid_year_bins += list(orbital_df["year_bin"].unique())
-valid_year_bins = sorted(set(valid_year_bins)) # Add future simulated values to valid year bins
+valid_year_bins = sorted(
+    set(valid_year_bins)
+)  # Add future simulated values to valid year bins
 
 # %%
 # Incorporate CO2 data from ice core samples from last 800,000 years
@@ -396,6 +398,35 @@ sediment_df = sediment_df.with_columns(
     pl.col("Be_ppm")
     .rolling_mean(window_size, center=True, min_samples=1)
     .alias("be_ppm")
+).select(["year_bin", "be_ppm"])
+
+# %%
+# Incorporate VADM magnetic field strength data
+vadm_df = pl.read_csv("Data/VADM.csv")
+
+# Filter out years outside of the valid year bins bounds
+vadm_df = vadm_df.filter(pl.col("year") >= min(valid_year_bins))
+
+# Assign year bins and aggregate VADM values
+vadm_df = util.year_bins_transform(vadm_df, valid_year_bins)
+
+# Set VADM to its absolute value
+vadm_df = vadm_df.with_columns(pl.col("VADM").abs().alias("VADM"))
+
+# Add VADM data to sediment_df
+sediment_df = sediment_df.join(vadm_df, on="year_bin", how="left")
+
+# %%
+# Calculate solar modulation from magnetic field strength and Be10 concentration
+cosmic_df = sediment_df.with_columns(
+    pl.struct(["be_ppm", "VADM"])
+    .map_elements(
+        lambda row: solar_modulation.calculate_solar_modulation(
+            row["be_ppm"], row["VADM"]
+        ),
+        return_dtype=pl.Float64,
+    )
+    .alias("solar_modulation")
 )
 
 # %%
@@ -406,7 +437,7 @@ temperature_df = (
     temperature_df.join(co2_df, on="year_bin", how="left")
     .with_columns(pl.col("co2_ppm").cast(pl.Float64))
     .join(orbital_df, on="year_bin", how="left")
-    .join(sediment_df, on="year_bin", how="left")
+    .join(cosmic_df, on="year_bin", how="left")
 )
 
 # %%
@@ -436,9 +467,11 @@ schemas = {
         "insolation": "FLOAT",
         "global_insolation": "FLOAT",
     },
-    "dim_sediment": {
+    "dim_cosmic": {
         "time_id": "INT PRIMARY KEY",
         "be_ppm": "FLOAT",
+        "VADM": "FLOAT",
+        "solar_modulation": "FLOAT",
     },
     "dim_location": {
         "sample_id": "INT PRIMARY KEY",
@@ -461,7 +494,9 @@ existing_time_ids = set(tables["dim_time"]["time_id"].to_list())
 new_time_ids = set(tables["dim_orbital"]["time_id"].to_list()) - existing_time_ids
 
 if new_time_ids:
-    new_time_rows = pl.DataFrame({"time_id": list(new_time_ids), "year_bin": list(new_time_ids)})
+    new_time_rows = pl.DataFrame(
+        {"time_id": list(new_time_ids), "year_bin": list(new_time_ids)}
+    )
     tables["dim_time"] = pl.concat([tables["dim_time"], new_time_rows]).unique()
 
 
@@ -473,7 +508,7 @@ schemas_to_update = {
     "dim_time": True,
     "dim_atmosphere": True,
     "dim_orbital": True,
-    "dim_sediment": True,
+    "dim_cosmic": True,
     "dim_location": True,
 }
 db_mode = "sqlite"
