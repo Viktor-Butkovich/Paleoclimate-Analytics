@@ -55,7 +55,7 @@ fact_temperature.sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv
 # Preprocess the data for analysis
 
 # Filter data for the specified year range
-preprocessed = fact_temperature.filter((pl.col("year_bin") >= -650000))
+preprocessed = fact_temperature.filter((pl.col("year_bin") >= -700000))
 
 # Aggregate data to have a constant frequency of 2000 years
 preprocessed = (
@@ -83,21 +83,27 @@ preprocessed = preprocessed.with_columns(delta_columns).filter(
     pl.col("year_bin") != preprocessed["year_bin"].min()
 )
 
+# Add lagged anomaly for 40,000 and 100,000 years before
+lagged_columns = [
+    pl.col("anomaly").shift(lag).alias(f"anomaly_lagged_{lag}")
+    for lag in [20, 50]
+]
+preprocessed = preprocessed.with_columns(lagged_columns)
+
+# Add _squared columns for non-year-bin and non-anomaly fields
+squared_columns = [
+    (pl.col(col) ** 2).alias(f"{col}_squared")
+    for col in preprocessed.columns
+    if col not in ["year_bin", "anomaly"]
+]
+preprocessed = preprocessed.with_columns(squared_columns)
+
 # Rescale columns except 'year_bin' and 'anomaly'
 scaler = MinMaxScaler()
 columns_to_rescale = [
     col
     for col in preprocessed.columns
-    if col
-    not in [
-        "year_bin",
-        "anomaly",
-        "delta_anomaly",
-        "degC",
-        "delta_degC",
-        "solar_modulation",
-        "delta_solar_modulation",
-    ]
+    if not (col in ["solar_modulation", "year_bin", "anomaly", "delta_anomaly"] or "degC" in col)
 ]
 
 # Exclude outlier year bin 2000 from min/max consideration
@@ -109,10 +115,15 @@ rescaled_df = pl.DataFrame(rescaled_data, schema=columns_to_rescale)
 preprocessed = preprocessed.with_columns(
     [pl.Series(name, rescaled_df[name]) for name in columns_to_rescale]
 )
+preprocessed = preprocessed.filter(pl.col("year_bin") > -600000) # Remove first 100,000 years with null lagged values
 print(preprocessed)
 
 # %%
 # Storing preprocessed data
-preprocessed.write_csv("Outputs/long_term_global_anomaly_view.csv")
+preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
+preprocessed = preprocessed.drop(
+    [col for col in preprocessed.columns if col.endswith("_squared") or col.startswith("delta_") or "lagged" in col]
+)
+preprocessed.write_csv("Outputs/long_term_global_anomaly_view.csv") # Only contains original columns
 
 # %%
