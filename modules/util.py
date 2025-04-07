@@ -55,7 +55,13 @@ def year_bins_transform(df: pl.DataFrame, valid_year_bins: List[int]) -> pl.Data
             },
         }
     )
+
     df = pl.concat([df, missing_entries]).sort("year_bin")
+
+    for col in df.columns:
+        if col != "year_bin":
+            df = df.with_columns(pl.col(col).interpolate().alias(col))
+
     df = df.with_columns(
         [
             pl.col(col).fill_null(strategy="backward").fill_null(strategy="forward")

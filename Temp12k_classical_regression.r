@@ -2,54 +2,44 @@ library(tidyverse)
 library(reshape2)
 library(scales)
 library(patchwork)
+library(olsrr)
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched.csv") %>% filter(year_bin <= 2025)
 anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+
+anomaly_df <- anomaly_df %>%
+    select(-contains("be_ppm")) %>%
+    select(-contains("VADM")) %>%
+    select(-delta_anomaly)
+
+omit_enriched <- TRUE
+if (omit_enriched) {
+    anomaly_df <- anomaly_df %>% select(-contains("delta"), -contains("squared"))
+}
 
 omit_co2 <- TRUE
 if (omit_co2) {
-    anomaly_df <- anomaly_df %>% select(-c(co2_ppm, co2_radiative_forcing, delta_co2_ppm, delta_co2_radiative_forcing, be_ppm, delta_be_ppm, VADM, delta_VADM))
+    anomaly_df <- anomaly_df %>% select(-contains("co2"))
 }
 
-anomaly_df <- anomaly_df %>%
-    mutate(across(
-        .cols = !matches("year_bin|anomaly"),
-        .fns = list(squared = ~ .^2),
-        .names = "{.col}_squared"
-    ))
-
-anomaly_df <- anomaly_df %>% # Try to capture 40,000 and 100,000 year cycles
-    mutate(
-        anomaly_lag_20 = lag(anomaly, 20),
-        anomaly_lag_50 = lag(anomaly, 50)
-    ) %>%
-    drop_na()
 
 validation_line <- -100000
 train_anomaly_df <- anomaly_df %>% filter(year_bin < validation_line)
 validation_anomaly_df <- anomaly_df %>% filter(year_bin >= validation_line)
 
-produce_delta_model <- function(model_type, data) {
-    # Predict delta anomaly from all delta attributes
-    return(model_type(delta_anomaly ~ ., data = data %>% select(starts_with("delta"))))
-}
-
-predict_delta_model <- function(model, data, validation_line) {
-    train_df <- data %>% filter(year_bin < validation_line)
-    validation_df <- data %>% filter(year_bin >= validation_line)
-
-    predicted_train_anomalies <- cumsum(predict(model, newdata = train_df)) + train_df$anomaly[1]
-    # Predict as cumulative sum of delta anomalies plus first anomaly value (accuracy will decrease farther from start)
-
-    predicted_validation_anomalies <- cumsum(predict(model, newdata = validation_df)) + tail(train_df$anomaly, 1)
-    # Predict as cumulative sum of delta anomalies plus last known anomaly value (accuracy will decrease farther from start)
-
-    return(c(predicted_train_anomalies, predicted_validation_anomalies))
+produce_stepwise_model <- function(model_type, data) {
+    # Predict anomaly from all non-delta attributes
+    stepwise_model <- ols_step_both_p(
+        lm(anomaly ~ ., data = data %>% select(-year_bin)),
+        details = FALSE
+    )
+    return(stepwise_model$model)
 }
 
 produce_model <- function(model_type, data) {
     # Predict anomaly from all non-delta attributes
-    return(model_type(anomaly ~ ., data = data %>% select(-c(starts_with("delta_"), year_bin))))
+    model <- model_type(anomaly ~ ., data = data %>% select(-year_bin))
+    return(model)
 }
 
 predict_model <- function(model, data) {
@@ -80,17 +70,12 @@ plot_predictions <- function(data, predictions, validation_line, file_path) {
     ggsave(paste("Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
 }
 
-linear_delta_model <- produce_delta_model(lm, train_anomaly_df)
-print(summary(linear_delta_model))
-linear_delta_model_predicted_anomaly <- predict_delta_model(linear_delta_model, anomaly_df, validation_line)
-plot_predictions(anomaly_df, linear_delta_model_predicted_anomaly, validation_line, "linear_delta_model_predictions")
-
-linear_model <- produce_model(lm, train_anomaly_df %>% select(-c(anomaly_lag_20, anomaly_lag_50)))
+linear_model <- produce_stepwise_model(lm, train_anomaly_df %>% select(-contains("lagged")))
 print(summary(linear_model))
 linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
 plot_predictions(anomaly_df, linear_model_predicted_anomaly, validation_line, "linear_model_predictions")
 
-linear_model <- produce_model(lm, train_anomaly_df)
+linear_model <- produce_stepwise_model(lm, train_anomaly_df)
 print(summary(linear_model))
 linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
 plot_predictions(anomaly_df, linear_model_predicted_anomaly, validation_line, "linear_model_predictions_lagged")

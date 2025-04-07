@@ -371,34 +371,36 @@ co2_df = co2_df.group_by("year_bin").agg(
 )
 
 # %%
-# Incorporate Beryllium-10 sediment data from Anderson 2018 records
+# Incorporate Beryllium-10 sediment data from 1 MYA Anderson 2018 records
 file_paths = [
     "Data/anderson2018-u1428-Extracted.csv",
     "Data/anderson2018-u1429-Extracted.csv",
     "Data/anderson2018-u1430-Extracted.csv",
 ]
 
-sediment_df = pl.concat(
+anderson_be10_df = pl.concat(
     [pl.read_csv(file_path) for file_path in file_paths], how="vertical"
+).rename({"Be_ppm": "be_ppm"})
+
+anderson_be10_df = (
+    anderson_be10_df.with_columns(((1950 - (pl.col("age_ka-BP") * 1000)).alias("year")))
+    .filter(pl.col("year") >= min(valid_year_bins))
+    .filter(pl.col("be_ppm") != 999999)  # Remove missing values
+    .select(["year", "be_ppm"])
+    .sort("year")
 )
 
-# Add a year column based on age_ka-BP
-sediment_df = (
-    sediment_df.with_columns(((1950 - (pl.col("age_ka-BP") * 1000)).alias("year")))
-    .filter(pl.col("year") >= min(valid_year_bins))
-    .select(["year", "Be_ppm"])
+dean_be10_df = (
+    pl.read_csv("Data/dean2006b-Extracted.csv")
+    .with_columns(((1950 - (pl.col("age_calkaBP") * 1000)).alias("year")))
+    .rename({"Be ppm": "be_ppm"})
+    .select(["year", "be_ppm"])
 )
+
+be10_df = pl.concat([anderson_be10_df, dean_be10_df], how="vertical")
 
 # Assign year bins and aggregate Be10 concentrations
-sediment_df = util.year_bins_transform(sediment_df, valid_year_bins)
-
-# Apply smoothing to the be_ppm values using a rolling mean
-window_size = 5  # Define the window size for smoothing
-sediment_df = sediment_df.with_columns(
-    pl.col("Be_ppm")
-    .rolling_mean(window_size, center=True, min_samples=1)
-    .alias("be_ppm")
-).select(["year_bin", "be_ppm"])
+be10_df = util.year_bins_transform(be10_df, valid_year_bins)
 
 # %%
 # Incorporate VADM magnetic field strength data
@@ -414,11 +416,11 @@ vadm_df = util.year_bins_transform(vadm_df, valid_year_bins)
 vadm_df = vadm_df.with_columns(pl.col("VADM").abs().alias("VADM"))
 
 # Add VADM data to sediment_df
-sediment_df = sediment_df.join(vadm_df, on="year_bin", how="left")
+cosmic_df = be10_df.join(vadm_df, on="year_bin", how="left")
 
 # %%
 # Calculate solar modulation from magnetic field strength and Be10 concentration
-cosmic_df = sediment_df.with_columns(
+cosmic_df = cosmic_df.with_columns(
     pl.struct(["be_ppm", "VADM"])
     .map_elements(
         lambda row: solar_modulation.calculate_solar_modulation(

@@ -64,6 +64,11 @@ preprocessed = (
     .agg(pl.all().mean())
 ).sort("year_bin")
 
+# Apply a 5-row rolling mean to the solar_modulation column
+preprocessed = preprocessed.with_columns(
+    pl.col("solar_modulation").rolling_mean(window_size=5).alias("solar_modulation")
+)
+
 # Use normalized solar modulation, as in Interglacials, Milankovitch Cycles, Solar Activity, and Carbon Dioxide (Marsh 2014)
 scaler = StandardScaler()
 solar_modulation_normalized = scaler.fit_transform(
@@ -85,8 +90,7 @@ preprocessed = preprocessed.with_columns(delta_columns).filter(
 
 # Add lagged anomaly for 40,000 and 100,000 years before
 lagged_columns = [
-    pl.col("anomaly").shift(lag).alias(f"anomaly_lagged_{lag}")
-    for lag in [20, 50]
+    pl.col("anomaly").shift(lag).alias(f"anomaly_lagged_{lag}") for lag in [20, 50]
 ]
 preprocessed = preprocessed.with_columns(lagged_columns)
 
@@ -103,7 +107,10 @@ scaler = MinMaxScaler()
 columns_to_rescale = [
     col
     for col in preprocessed.columns
-    if not (col in ["solar_modulation", "year_bin", "anomaly", "delta_anomaly"] or "degC" in col)
+    if not (
+        col in ["solar_modulation", "year_bin", "anomaly", "delta_anomaly"]
+        or "degC" in col
+    )
 ]
 
 # Exclude outlier year bin 2000 from min/max consideration
@@ -115,15 +122,23 @@ rescaled_df = pl.DataFrame(rescaled_data, schema=columns_to_rescale)
 preprocessed = preprocessed.with_columns(
     [pl.Series(name, rescaled_df[name]) for name in columns_to_rescale]
 )
-preprocessed = preprocessed.filter(pl.col("year_bin") > -600000) # Remove first 100,000 years with null lagged values
+preprocessed = preprocessed.filter(
+    pl.col("year_bin") > -600000
+)  # Remove first 100,000 years with null lagged values
 print(preprocessed)
 
 # %%
 # Storing preprocessed data
 preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
 preprocessed = preprocessed.drop(
-    [col for col in preprocessed.columns if col.endswith("_squared") or col.startswith("delta_") or "lagged" in col]
+    [
+        col
+        for col in preprocessed.columns
+        if col.endswith("_squared") or col.startswith("delta_") or "lagged" in col
+    ]
 )
-preprocessed.write_csv("Outputs/long_term_global_anomaly_view.csv") # Only contains original columns
+preprocessed.write_csv(
+    "Outputs/long_term_global_anomaly_view.csv"
+)  # Only contains original columns
 
 # %%
