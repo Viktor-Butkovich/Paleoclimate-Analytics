@@ -163,5 +163,6 @@ cython_debug/
 *.xlsx
 *.pkl
 *.pbix
+Rplots.pdf
 Data/*
 evolution_progress/*

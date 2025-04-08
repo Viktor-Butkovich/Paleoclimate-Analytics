@@ -45,6 +45,22 @@ for dim_name, dim_df in dimensions_dict.items():
         continue  # Skip dim_time, which has already been joined
     fact_temperature = fact_temperature.join(dim_df, on="time_id", how="left")
 fact_temperature = fact_temperature.select(pl.exclude("time_id"))
+
+
+def round_columns(df, num_places, exclude=None):
+    if not exclude:
+        exclude = []
+    return df.with_columns(
+        [
+            pl.col(col).round(num_places).alias(col)
+            for col in df.columns
+            if col not in exclude
+        ]
+    )
+
+
+# Round all non-year-bin columns to 5 decimal places - avoid float errors from causing different output each run
+fact_temperature = round_columns(fact_temperature, 5, exclude=["year_bin"])
 print(fact_temperature)
 
 # %%
@@ -125,6 +141,9 @@ preprocessed = preprocessed.with_columns(
 preprocessed = preprocessed.filter(
     pl.col("year_bin") > -600000
 )  # Remove first 100,000 years with null lagged values
+
+preprocessed = round_columns(preprocessed, 5, exclude=["year_bin"])
+
 print(preprocessed)
 
 # %%

@@ -146,14 +146,9 @@ for sample in data["TS"]:
             rewritten_samples.append(sample)
     # According to original paper, any records that aren't units degC, variable name temperature are not calibrated
     #   C37.concentration: set of compounds produced by algae, used to estimate past sea surface temperatures
-print("Unique units:", units)
-print("Oldest age:", max(ages))
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
 #   We want to find samples regarding temperature
 json.dump(temperature_data, open("Data/raw/temperature_data.json", "w"))
-print(
-    f"{num_samples} samples include degC temperature data, resulting in {len(temperature_data)} time series data points"
-)
 json.dump(rewritten_samples, open("Data/raw/anomaly_outlier_samples.json", "w"))
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
@@ -172,12 +167,6 @@ upper_bound = q3 + 1.5 * iqr
 temperature_df = temperature_df.filter(
     (temperature_df["degC"] >= lower_bound) & (temperature_df["degC"] <= upper_bound)
 )
-print(temperature_df)
-print(
-    f"Filtering outliers beyond ({lower_bound}, {upper_bound}) - check if these are the correct units"
-)
-max_degC = temperature_df["degC"].max()
-print(f"Maximum degC: {max_degC}")
 
 # %%
 # Extract/Transform Berkeley Earth recent climate data (since 1850)
@@ -279,7 +268,6 @@ if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
     modern_temperature_df = modern_temperature_df.join(
         unique_locations, on=["geo_meanLat", "geo_meanLon"], how="left"
     )
-    print(modern_temperature_df)
 
     modern_temperature_df = modern_temperature_df.with_columns(
         pl.col("sample_id").cast(pl.Int64),
