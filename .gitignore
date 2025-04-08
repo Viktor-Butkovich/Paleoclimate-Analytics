@@ -166,3 +166,5 @@ cython_debug/
 Rplots.pdf
 Data/*
 evolution_progress/*
+lightning_logs/*
+models/*

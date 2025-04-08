@@ -149,6 +149,16 @@ print(preprocessed)
 # %%
 # Storing preprocessed data
 preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
+
+training = preprocessed.drop(
+    [
+        col
+        for col in preprocessed.columns
+        if "co2" in col or "be_ppm" in col or "VADM" in col or "delta_anomaly" in col
+    ]
+)
+training.write_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
+
 preprocessed = preprocessed.drop(
     [
         col

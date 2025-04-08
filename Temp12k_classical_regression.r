@@ -4,24 +4,13 @@ library(scales)
 library(patchwork)
 library(olsrr)
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched_training.csv") %>% filter(year_bin <= 2025)
 anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
-
-anomaly_df <- anomaly_df %>%
-    select(-contains("be_ppm")) %>%
-    select(-contains("VADM")) %>%
-    select(-delta_anomaly)
 
 omit_enriched <- TRUE
 if (omit_enriched) {
     anomaly_df <- anomaly_df %>% select(-contains("delta"), -contains("squared"))
 }
-
-omit_co2 <- TRUE
-if (omit_co2) {
-    anomaly_df <- anomaly_df %>% select(-contains("co2"))
-}
-
 
 validation_line <- -100000
 train_anomaly_df <- anomaly_df %>% filter(year_bin < validation_line)

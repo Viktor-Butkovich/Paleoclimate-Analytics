@@ -14,12 +14,17 @@ from sklearn.metrics import mean_squared_error
 print("Loading data...")
 
 df = (
-    pl.read_csv("Data/anomaly_training_ready.csv")
+    pl.read_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
     .with_columns(pl.lit(1).alias("unique_id"))
     .rename({"year_bin": "ds", "anomaly": "y"})
     .with_columns((pl.col("ds") / 2000).alias("ds"))
     .with_columns(pl.col("ds").cast(pl.Date))
+    .drop_nans()
 )
+
+df = df.drop([col for col in df.columns if "co2" in col])  # Remove co2 columns
+
+
 Y_train = df[: int(len(df) * 0.9)]
 Y_test = df[int(len(df) * 0.9) :]
 # Try making y_test the same size as the validation set from the linear regression trials - compare performance on the same data
@@ -33,13 +38,7 @@ model = NHITS(
     input_size=horizon * 2,
     loss=DistributionLoss(distribution="StudentT", level=[80, 90], return_params=True),
     futr_exog_list=[
-        "co2_ppm",
-        "co2_radiative_forcing",
-        "eccentricity",
-        "obliquity",
-        "perihelion",
-        "insolation",
-        "global_insolation",
+        column for column in df.columns if not column in ["ds", "y", "unique_id"]
     ],
     stack_types=["identity", "identity", "identity"],
     n_blocks=[1, 1, 1],
