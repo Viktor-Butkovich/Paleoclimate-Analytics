@@ -13,10 +13,42 @@ import numpy as np
 full_df = pl.read_csv(
     "Outputs/long_term_global_anomaly_view_enriched_training.csv"
 ).drop_nans()
-train_df = full_df.filter(pl.col("year_bin") < -100000)
+# %%
+# Solar modulation seems to have an inverse effect at -64,000 - possibly some reversal in its effect needs to be modeled
+reverse_solar_modulation = False
+if reverse_solar_modulation:
+    full_df = full_df.with_columns(
+        pl.when(pl.col("year_bin") > -200000)
+        .then(-pl.col("solar_modulation"))
+        .otherwise(pl.col("solar_modulation"))
+        .alias("solar_modulation"),
+        pl.when(pl.col("year_bin") > -200000)
+        .then(-pl.col("delta_solar_modulation"))
+        .otherwise(pl.col("delta_solar_modulation"))
+        .alias("delta_solar_modulation"),
+    )
+# %%
+# Define the test set range
+middle = True
+if middle:
+    test_start = -500000
+    test_end = -300000
+else:
+    test_start = -100000
+    test_end = 3000
+
+# Split the dataset into training and test sets
+test_df = full_df.filter(
+    (pl.col("year_bin") >= test_start) & (pl.col("year_bin") <= test_end)
+)
+train_df = full_df.filter(
+    (pl.col("year_bin") < test_start) | (pl.col("year_bin") > test_end)
+)
 
 # Prepare the data
 features = train_df.drop("anomaly", "year_bin").to_numpy()
+print(f"Training on {train_df.drop('anomaly', 'year_bin').columns}")
+
 targets = train_df["anomaly"].to_numpy()
 
 # Convert to PyTorch tensors
@@ -41,8 +73,54 @@ class AnomalyPredictor(nn.Module):
         return self.model(x)
 
 
+def run_loss_train(model, data_loader, criterion, regularization_lambda, optimizer):
+    """
+    Description: Trains the inputted model for 1 epoch
+    """
+    model.train()
+    total_loss = 0.0
+    for batch_features, batch_targets in data_loader:
+        predictions = model(batch_features)
+        loss = criterion(predictions, batch_targets)
+        l2_norm = sum(
+            p.pow(2).sum() for p in model.parameters()
+        )  # L2 (ridge) regularization - loss penalty for larger parameter sizes (automatically ignores important parameters)
+        loss += regularization_lambda * l2_norm
+        optimizer.zero_grad()
+        total_loss += loss.item()
+        loss.backward()
+        optimizer.step()
+
+
+def evaluate_loss(model, data_loader, criterion, regularization_lambda):
+    """
+    Description: Returns the loss of the inputted model on the inputted data
+    """
+    model.eval()
+    total_loss = 0.0
+    with torch.no_grad():
+        for batch_features, batch_targets in data_loader:
+            predictions = model(batch_features)
+            loss = criterion(predictions, batch_targets)
+            l2_norm = sum(p.pow(2).sum() for p in model.parameters())
+            loss += regularization_lambda * l2_norm
+            total_loss += loss.item()
+    return total_loss / len(data_loader)
+
+
+def evaluate_predictions(model, features_tensor):
+    """
+    Description: Returns the predictions of the inputted model on the inputted data
+    """
+    model.eval()
+    with torch.no_grad():
+        fold_predictions = model(features_tensor).squeeze().numpy()
+    return fold_predictions
+
+
 # K-Fold Cross Validation
 k_folds = 5
+regularization_lambda = 0.05  # L2 (ridge) regularization parameter
 kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
 
 input_size = features.shape[1]
@@ -69,46 +147,40 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    # Train the model
-    epochs = 50
+    epochs = 400
+    prev_val_loss = float("inf")
+    original_patience = 10
+    patience = original_patience
     for epoch in range(epochs):
-        model.train()
-        for batch_features, batch_targets in train_loader:
-            # Forward pass
-            predictions = model(batch_features)
-            loss = criterion(predictions, batch_targets)
+        # Train the model
+        run_loss_train(model, train_loader, criterion, regularization_lambda, optimizer)
 
-            # Backward pass and optimization
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        # Early stopping: break if validation loss didn't improve
+        val_loss = evaluate_loss(model, val_loader, criterion, regularization_lambda)
+        if val_loss > prev_val_loss:
+            patience -= 1
+            if patience <= 0:
+                print(
+                    f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss."
+                )
+                break
+        else:
+            patience = original_patience
+        prev_val_loss = val_loss
 
-    # Evaluate on validation set
-    model.eval()
-    val_loss = 0.0
-    fold_residuals = []
-    with torch.no_grad():
-        for val_features, val_targets in val_loader:
-            val_predictions = model(val_features)
-            val_loss += criterion(val_predictions, val_targets).item()
-            fold_residuals.extend((val_targets - val_predictions).squeeze().numpy())
+    # Show final fold performance
+    val_loss = evaluate_loss(model, val_loader, criterion, regularization_lambda)
+    train_loss = evaluate_loss(model, train_loader, criterion, regularization_lambda)
 
-    val_loss /= len(val_loader)
+    print(f"Training Loss for Fold {fold + 1}: {train_loss:.4f}")
     print(f"Validation Loss for Fold {fold + 1}: {val_loss:.4f}")
-    fold_results.append(val_loss)
-    residuals.extend(fold_residuals)
-    torch.save(model.state_dict(), f"models/model_fold_{fold + 1}.pth")
 
-# Aggregate residuals and compute R-squared
-residuals = np.array(residuals)
-total_variance = np.var(targets_tensor.numpy())
-explained_variance = total_variance - np.var(residuals)
-r_squared = explained_variance / total_variance
+    fold_results.append(val_loss)
+    torch.save(model.state_dict(), f"models/model_fold_{fold + 1}.pth")
 
 # Average validation loss across folds
 avg_val_loss = np.mean(fold_results)
 print(f"Average Validation Loss: {avg_val_loss:.4f}")
-print(f"R-squared of the ensemble: {r_squared:.4f}")
 
 # %%
 # Evaluate on full dataset
@@ -118,10 +190,8 @@ full_features_tensor = torch.tensor(full_features, dtype=torch.float32)
 all_predictions = []
 for fold in range(k_folds):
     model.load_state_dict(torch.load(f"models/model_fold_{fold + 1}.pth"))
-    model.eval()  # Ensure the model is in evaluation mode
-    with torch.no_grad():
-        fold_predictions = model(full_features_tensor).squeeze().numpy()
-        all_predictions.append(fold_predictions)
+    fold_predictions = evaluate_predictions(model, full_features_tensor)
+    all_predictions.append(fold_predictions)
 
 # Combine predictions from all folds (e.g., average them)
 predictions = sum(all_predictions) / len(all_predictions)
@@ -135,7 +205,8 @@ plt.plot(pred_df["year_bin"], pred_df["anomaly"], label="Actual Anomaly", alpha=
 plt.plot(
     pred_df["year_bin"], pred_df["pred_anomaly"], label="Predicted Anomaly", alpha=0.7
 )
-plt.axvline(x=-100000, color="red", linestyle="--", label="Test Data Cutoff")
+plt.axvline(x=test_start, color="red", linestyle="--", label="Test Data Cutoff")
+plt.axvline(x=test_end, color="red", linestyle="--", label="Test Data Cutoff")
 plt.xlabel("Year Bin")
 plt.ylabel("Anomaly")
 plt.title("Actual vs Predicted Anomaly (Test Data)")

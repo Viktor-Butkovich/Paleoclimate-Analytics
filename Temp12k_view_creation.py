@@ -199,7 +199,10 @@ training = preprocessed.drop(
         or "squared" in col
         # or "delta" in col
     ]
-)
+).filter(
+    pl.col("year_bin") >= -740000
+)  # Records below -740000 are low resolution and cause overfitting to noise
+
 training.write_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
 
 preprocessed = preprocessed.drop(
