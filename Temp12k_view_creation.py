@@ -1,12 +1,13 @@
 # %%
 # Imports
-db_mode = "sqlite"
+import polars as pl
+from sklearn.preprocessing import StandardScaler
+
+db_mode = "sql_server"
 if db_mode == "sql_server":
     from modules import db_sqlalchemy as db
 elif db_mode == "sqlite":
     from modules import db_sqlite as db
-import polars as pl
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # %%
 # Load in the data
@@ -61,7 +62,6 @@ def round_columns(df, num_places, exclude=None):
 
 # Round all non-year-bin columns to 5 decimal places - avoid float errors from causing different output each run
 fact_temperature = round_columns(fact_temperature, 5, exclude=["year_bin"])
-print(fact_temperature)
 
 # %%
 # Storing raw data
@@ -70,81 +70,119 @@ fact_temperature.sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv
 # %%
 # Preprocess the data for analysis
 
-# Filter data for the specified year range
-preprocessed = fact_temperature.filter((pl.col("year_bin") >= -700000))
-
 # Aggregate data to have a constant frequency of 2000 years
 preprocessed = (
-    preprocessed.with_columns((pl.col("year_bin") // 2000 * 2000).alias("year_bin"))
+    fact_temperature.with_columns((pl.col("year_bin") // 2000 * 2000).alias("year_bin"))
     .group_by("year_bin")
     .agg(pl.all().mean())
 ).sort("year_bin")
 
-# Apply a 5-row rolling mean to the solar_modulation column
+# Apply a rolling mean to the solar_modulation column - helps with sparse data
 preprocessed = preprocessed.with_columns(
-    pl.col("solar_modulation").rolling_mean(window_size=5).alias("solar_modulation")
+    pl.col("solar_modulation")
+    .rolling_mean(window_size=3, center=True)
+    .alias("solar_modulation")
 )
 
-# Use normalized solar modulation, as in Interglacials, Milankovitch Cycles, Solar Activity, and Carbon Dioxide (Marsh 2014)
-scaler = StandardScaler()
-solar_modulation_normalized = scaler.fit_transform(
-    preprocessed.select(["solar_modulation"]).to_numpy()
+first_populated_2000_increment = (
+    preprocessed.filter(pl.col("year_bin") % 50000 != 0)["year_bin"].min() - 2000
 )
-preprocessed = preprocessed.with_columns(
-    pl.Series("solar_modulation", solar_modulation_normalized.flatten())
+
+preprocessed = preprocessed.filter(  # Remove rows before the first fully defined 2000-increment row
+    pl.col("year_bin") >= first_populated_2000_increment
 )
+
+orbital_lags = [20, 50]
+anomaly_lags = [20, 50]
+
+# Pad the preprocessed dataframe with duplicates of the earliest year bin row, ensuring that lags are defined
+padding_row = preprocessed.filter(
+    pl.col("year_bin") == preprocessed["year_bin"].min()
+).with_columns(pl.lit(None, dtype=pl.Int64).alias("year_bin"))
+
+padding_rows = pl.concat(
+    [padding_row] * (max(orbital_lags + anomaly_lags)), how="vertical"
+)
+preprocessed = padding_rows.vstack(preprocessed)
 
 # Add delta columns for each column except 'year_bin'
-delta_columns = [
-    (pl.col(col) - pl.col(col).shift(1)).alias(f"delta_{col}")
-    for col in preprocessed.columns
-    if col != "year_bin"
-]
-preprocessed = preprocessed.with_columns(delta_columns).filter(
-    pl.col("year_bin") != preprocessed["year_bin"].min()
+preprocessed = preprocessed.with_columns(
+    [
+        (pl.col(col) - pl.col(col).shift(1)).alias(f"delta_{col}")
+        for col in preprocessed.columns
+        if col != "year_bin"
+    ]
 )
 
-# Add lagged anomaly for 40,000 and 100,000 years before
-lagged_columns = [
-    pl.col("anomaly").shift(lag).alias(f"anomaly_lagged_{lag}") for lag in [20, 50]
+# Normalize most columns to have a mean of 0 and standard deviation of 1
+scaler = StandardScaler()
+columns_to_normalize = [
+    col for col in preprocessed.columns if not ("anomaly" in col or col == "year_bin")
 ]
-preprocessed = preprocessed.with_columns(lagged_columns)
+
+normalized_data = scaler.fit_transform(
+    preprocessed.select(columns_to_normalize).to_numpy()
+)
+normalized_df = pl.DataFrame(normalized_data, schema=columns_to_normalize)
+
+preprocessed = preprocessed.with_columns(
+    [pl.Series(name, normalized_df[name]) for name in columns_to_normalize]
+)
+
+# %%
+# Add lagged features from 40,000 and 100,000 years before
+lagged_columns = (
+    [
+        pl.col("anomaly").shift(lag).alias(f"anomaly_lagged_{lag}")
+        for lag in anomaly_lags
+    ]
+    + [
+        pl.col("perihelion").shift(lag).alias(f"perihelion_lagged_{lag}")
+        for lag in orbital_lags
+    ]
+    + [
+        pl.col("eccentricity").shift(lag).alias(f"eccentricity_lagged_{lag}")
+        for lag in orbital_lags
+    ]
+    + [
+        pl.col("obliquity").shift(lag).alias(f"obliquity_lagged_{lag}")
+        for lag in orbital_lags
+    ]
+    + [
+        pl.col("insolation").shift(lag).alias(f"insolation_lagged_{lag}")
+        for lag in orbital_lags
+    ]
+)
+
+preprocessed = preprocessed.with_columns(lagged_columns).filter(
+    pl.col("year_bin").is_not_null()
+)
 
 # Add _squared columns for non-year-bin and non-anomaly fields
 squared_columns = [
     (pl.col(col) ** 2).alias(f"{col}_squared")
     for col in preprocessed.columns
-    if col not in ["year_bin", "anomaly"]
+    if col not in ["year_bin", "anomaly"] and "lagged" not in col
 ]
 preprocessed = preprocessed.with_columns(squared_columns)
 
-# Rescale columns except 'year_bin' and 'anomaly'
-scaler = MinMaxScaler()
-columns_to_rescale = [
-    col
-    for col in preprocessed.columns
-    if not (
-        col in ["solar_modulation", "year_bin", "anomaly", "delta_anomaly"]
-        or "degC" in col
-    )
-]
-
-# Exclude outlier year bin 2000 from min/max consideration
-filtered_data = preprocessed.filter(pl.col("year_bin") != 2000)
-scaler.fit(filtered_data.select(columns_to_rescale).to_numpy())
-rescaled_data = scaler.transform(preprocessed.select(columns_to_rescale).to_numpy())
-rescaled_df = pl.DataFrame(rescaled_data, schema=columns_to_rescale)
-
-preprocessed = preprocessed.with_columns(
-    [pl.Series(name, rescaled_df[name]) for name in columns_to_rescale]
-)
-preprocessed = preprocessed.filter(
-    pl.col("year_bin") > -600000
-)  # Remove first 100,000 years with null lagged values
-
 preprocessed = round_columns(preprocessed, 5, exclude=["year_bin"])
 
-print(preprocessed)
+# %%
+# Apply linear interpolation to fill null values in all past rows
+interpolated = (
+    preprocessed.filter(pl.col("year_bin") < 2025).fill_nan(None).interpolate()
+)
+non_interpolated = preprocessed.filter(pl.col("year_bin") >= 2025)
+
+# Ensure interpolated has the same data types as non_interpolated (interpolate and None values can interfere with types)
+interpolated = interpolated.with_columns(
+    [pl.col(col).cast(non_interpolated.schema[col]) for col in interpolated.columns]
+)
+
+preprocessed = pl.concat([interpolated, non_interpolated], how="vertical").sort(
+    "year_bin"
+)
 
 # %%
 # Storing preprocessed data
@@ -154,7 +192,12 @@ training = preprocessed.drop(
     [
         col
         for col in preprocessed.columns
-        if "co2" in col or "be_ppm" in col or "VADM" in col or "delta_anomaly" in col
+        if "co2" in col
+        or "be_ppm" in col
+        or "VADM" in col
+        or "delta_anomaly" in col
+        or "squared" in col
+        # or "delta" in col
     ]
 )
 training.write_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
@@ -166,6 +209,8 @@ preprocessed = preprocessed.drop(
         if col.endswith("_squared") or col.startswith("delta_") or "lagged" in col
     ]
 )
+print("Finished saving preprocessed views")
+print(preprocessed)
 preprocessed.write_csv(
     "Outputs/long_term_global_anomaly_view.csv"
 )  # Only contains original columns

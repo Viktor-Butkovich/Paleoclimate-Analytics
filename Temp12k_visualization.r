@@ -4,9 +4,12 @@ library(scales)
 library(patchwork)
 
 anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
-anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+# Preprocessed, normalized, missing values interpolated, etc. with constant frequency
 
-ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
+anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025 & year_bin >= -700000)
+# Raw data, good for actual attribute values and high-frequency time periods (recent)
+
+ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
     annotate("text", x = -600000, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#DF00A7") +

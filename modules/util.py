@@ -4,7 +4,7 @@ import polars as pl
 
 
 def get_year_bin(year: int) -> int:
-    if year < -700000:  # Nearest 50,000
+    if year < -800000:  # Nearest 50,000
         return round(year / 50000) * 50000
     elif year < -20000:  # Nearest 2000
         return round(year / 2000) * 2000

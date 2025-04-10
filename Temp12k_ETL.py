@@ -8,6 +8,12 @@ import warnings
 import numpy as np
 import os
 
+db_mode = "sql_server"
+if db_mode == "sql_server":
+    from modules import db_sqlalchemy as db
+elif db_mode == "sqlite":
+    from modules import db_sqlite as db
+
 # %%
 # Extract the Temp12k data - 1 mya to present
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -501,11 +507,12 @@ schemas_to_update = {
     "dim_cosmic": True,
     "dim_location": True,
 }
-db_mode = "sqlite"
+db_mode = "sql_server"
 if db_mode == "sql_server":
     from modules import db_sqlalchemy as db
 elif db_mode == "sqlite":
     from modules import db_sqlite as db
+
 if update_db:
     db.connect()
     try:

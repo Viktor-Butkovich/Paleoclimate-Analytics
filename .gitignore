@@ -168,3 +168,4 @@ Data/*
 evolution_progress/*
 lightning_logs/*
 models/*
+Outputs/EDA_plot.png
