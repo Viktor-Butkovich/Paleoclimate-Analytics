@@ -176,4 +176,45 @@ solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
 solar_modulation_plot
 ggsave("Outputs/long_term_solar_modulation_plot.png", solar_modulation_plot, width = 12, height = 6)
 
+plot_predictions <- function(data, file_path) {
+    present_line <- 2025 # Include these in a shared configuration file rather than hardcoding
+    prediction_line <- 200000
+    train1_bounds <- c(min(data$year_bin), -500000)
+    test_bounds <- c(-500000, -300000)
+    train2_bounds <- c(-300000, present_line)
+    forecast_bounds <- c(present_line, prediction_line)
+    ggplot(data, aes(x = year_bin)) +
+        geom_line(aes(y = anomaly, color = "Actual Anomaly")) +
+        geom_line(aes(y = pred_anomaly, color = "Predicted Anomaly")) +
+        labs(
+            x = "Year",
+            y = "Anomaly (°C)",
+            color = "Legend",
+            title = "Actual and Predicted Climate Anomaly by Year"
+        ) +
+        theme_classic() +
+        scale_y_continuous(limits = c(-10, 4), breaks = seq(-10, 4, by = 2)) +
+        scale_x_continuous(labels = label_number(scale_cut = cut_short_scale()), breaks = seq(ceiling(min(data$year_bin) / 100000) * 100000, max(data$year_bin), by = 100000)) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
+        annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#df00a7") +
+        annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey") +
+        annotate("rect", xmin = present_line, xmax = max(data$year_bin), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#889AFF") +
+        annotate("text", x = mean(forecast_bounds), y = -10, label = "Forecast", hjust = 0.5, color = "black") +
+        annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black") +
+        annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black") +
+        annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black") +
+        geom_vline(xintercept = present_line, linetype = "dotted", color = "blue") +
+        annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black")
+    ggsave(paste("Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
+}
+
+
+for (prediction_type in c(
+    "linear_model_predictions",
+    "linear_model_predictions_lagged",
+    "torch_model_predictions"
+)) {
+    plot_predictions(read.csv(paste("Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
+}
+
 print("Plots saved successfully")

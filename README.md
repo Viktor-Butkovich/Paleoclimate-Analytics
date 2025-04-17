@@ -17,8 +17,8 @@ Temperature anomaly since 12,000 BC:
 Temperature anomaly since 1850:
 ![Modern Temperature Anomaly](Outputs/modern_temperature_anomaly_forecast.png)
 
-Estimated regression of temperature anomaly:
-![Temperature Anomaly Regression](Outputs/regression_anomaly_forecast.png)
+Estimated forecast of temperature anomaly:
+![Temperature Anomaly Forecast](Outputs/torch_model_predictions.png)
 
 Research AGGI Index:
 https://gml.noaa.gov/aggi/aggi.html
@@ -82,4 +82,3 @@ Also look into using smoothed variables with s() to reduce noise and for easier 
     Try out a gradient-boosted tree regressor and an xgboost regressor
     This guide looks very helpful for time series validation: https://towardsdatascience.com/model-validation-techniques-for-time-series-3518269bd5b3/
 
-Use Pytorch instead of Tensorflow

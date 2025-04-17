@@ -93,7 +93,7 @@ preprocessed = preprocessed.filter(  # Remove rows before the first fully define
 )
 
 orbital_lags = [20, 50]
-anomaly_lags = [20, 50]
+anomaly_lags = []
 
 # Pad the preprocessed dataframe with duplicates of the earliest year bin row, ensuring that lags are defined
 padding_row = preprocessed.filter(
@@ -188,20 +188,24 @@ preprocessed = pl.concat([interpolated, non_interpolated], how="vertical").sort(
 # Storing preprocessed data
 preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
 
-training = preprocessed.drop(
-    [
-        col
-        for col in preprocessed.columns
-        if "co2" in col
-        or "be_ppm" in col
-        or "VADM" in col
-        or "delta_anomaly" in col
-        or "squared" in col
-        # or "delta" in col
-    ]
-).filter(
-    pl.col("year_bin") >= -740000
-)  # Records below -740000 are low resolution and cause overfitting to noise
+training = (
+    preprocessed.drop(
+        [
+            col
+            for col in preprocessed.columns
+            if "co2" in col
+            or "be_ppm" in col
+            or "VADM" in col
+            or "delta_anomaly" in col
+            or "squared" in col
+            or "solar_modulation" in col
+        ]
+    )
+    .filter(  # Records below -740000 are low resolution and cause overfitting to noise
+        pl.col("year_bin") >= -740000
+    )
+    .with_columns(pl.col("anomaly").fill_null(0))
+)
 
 training.write_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
 

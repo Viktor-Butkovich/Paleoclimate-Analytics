@@ -3,16 +3,24 @@
 import polars as pl
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import KFold
 import numpy as np
 
 # %%
 # Load the dataset
-full_df = pl.read_csv(
-    "Outputs/long_term_global_anomaly_view_enriched_training.csv"
-).drop_nans()
+present_line = 2025
+prediction_line = 200000  # Don't attempt predictions past year 200,000
+full_df = (
+    pl.read_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
+    .with_columns(
+        pl.when(pl.col("year_bin") > present_line)
+        .then(None)
+        .otherwise(pl.col("anomaly"))
+        .alias("anomaly")
+    )
+    .filter(pl.col("year_bin") < prediction_line)
+)
 # %%
 # Solar modulation seems to have an inverse effect at -64,000 - possibly some reversal in its effect needs to be modeled
 reverse_solar_modulation = False
@@ -35,14 +43,16 @@ if middle:
     test_end = -300000
 else:
     test_start = -100000
-    test_end = 3000
+    test_end = np.inf
 
 # Split the dataset into training and test sets
 test_df = full_df.filter(
-    (pl.col("year_bin") >= test_start) & (pl.col("year_bin") <= test_end)
+    ((pl.col("year_bin") >= test_start) & (pl.col("year_bin") <= test_end))
+    | (pl.col("year_bin") > present_line)
 )
 train_df = full_df.filter(
-    (pl.col("year_bin") < test_start) | (pl.col("year_bin") > test_end)
+    (((pl.col("year_bin") < test_start) | (pl.col("year_bin") > test_end)))
+    & (pl.col("year_bin") <= present_line)
 )
 
 # Prepare the data
@@ -147,7 +157,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    epochs = 400
+    epochs = 2000
     prev_val_loss = float("inf")
     original_patience = 10
     patience = original_patience
@@ -197,20 +207,11 @@ for fold in range(k_folds):
 predictions = sum(all_predictions) / len(all_predictions)
 
 # Save the predictions as pred_anomaly
-pred_df = full_df.with_columns(pl.Series("pred_anomaly", predictions))
-
-# Plot anomaly and pred_anomaly as time series
-plt.figure(figsize=(12, 6))
-plt.plot(pred_df["year_bin"], pred_df["anomaly"], label="Actual Anomaly", alpha=0.7)
-plt.plot(
-    pred_df["year_bin"], pred_df["pred_anomaly"], label="Predicted Anomaly", alpha=0.7
+pred_df = full_df.with_columns(pl.Series("pred_anomaly", predictions)).select(
+    "year_bin", "anomaly", "pred_anomaly"
 )
-plt.axvline(x=test_start, color="red", linestyle="--", label="Test Data Cutoff")
-plt.axvline(x=test_end, color="red", linestyle="--", label="Test Data Cutoff")
-plt.xlabel("Year Bin")
-plt.ylabel("Anomaly")
-plt.title("Actual vs Predicted Anomaly (Test Data)")
-plt.legend()
-plt.show()
+pred_df.write_csv("Outputs/torch_model_predictions.csv")
+
+print("Saved predictions to csv")
 
 # %%
