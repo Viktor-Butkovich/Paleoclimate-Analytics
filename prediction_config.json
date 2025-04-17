@@ -1,0 +1,7 @@
+{
+    "present": 2025,
+    "forecast_end": 200000,
+    "test_start": -500000,
+    "test_end": -300000,
+    "anomaly_decimal_places": 3
+}

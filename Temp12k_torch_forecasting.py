@@ -6,53 +6,39 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import KFold
 import numpy as np
+import json
 
 # %%
 # Load the dataset
-present_line = 2025
-prediction_line = 200000  # Don't attempt predictions past year 200,000
+config = json.load(open("prediction_config.json"))
+
 full_df = (
     pl.read_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
     .with_columns(
-        pl.when(pl.col("year_bin") > present_line)
+        pl.when(pl.col("year_bin") > config["present"])
         .then(None)
         .otherwise(pl.col("anomaly"))
         .alias("anomaly")
     )
-    .filter(pl.col("year_bin") < prediction_line)
+    .filter(pl.col("year_bin") < config["forecast_end"])
 )
 # %%
-# Solar modulation seems to have an inverse effect at -64,000 - possibly some reversal in its effect needs to be modeled
-reverse_solar_modulation = False
-if reverse_solar_modulation:
-    full_df = full_df.with_columns(
-        pl.when(pl.col("year_bin") > -200000)
-        .then(-pl.col("solar_modulation"))
-        .otherwise(pl.col("solar_modulation"))
-        .alias("solar_modulation"),
-        pl.when(pl.col("year_bin") > -200000)
-        .then(-pl.col("delta_solar_modulation"))
-        .otherwise(pl.col("delta_solar_modulation"))
-        .alias("delta_solar_modulation"),
-    )
-# %%
-# Define the test set range
-middle = True
-if middle:
-    test_start = -500000
-    test_end = -300000
-else:
-    test_start = -100000
-    test_end = np.inf
-
 # Split the dataset into training and test sets
 test_df = full_df.filter(
-    ((pl.col("year_bin") >= test_start) & (pl.col("year_bin") <= test_end))
-    | (pl.col("year_bin") > present_line)
+    (
+        (pl.col("year_bin") >= config["test_start"])
+        & (pl.col("year_bin") <= config["test_end"])
+    )
+    | (pl.col("year_bin") > config["present"])
 )
 train_df = full_df.filter(
-    (((pl.col("year_bin") < test_start) | (pl.col("year_bin") > test_end)))
-    & (pl.col("year_bin") <= present_line)
+    (
+        (
+            (pl.col("year_bin") < config["test_start"])
+            | (pl.col("year_bin") > config["test_end"])
+        )
+    )
+    & (pl.col("year_bin") <= config["present"])
 )
 
 # Prepare the data
@@ -128,10 +114,18 @@ def evaluate_predictions(model, features_tensor):
     return fold_predictions
 
 
+# Set random seeds
+seed = 42
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 # K-Fold Cross Validation
 k_folds = 5
 regularization_lambda = 0.05  # L2 (ridge) regularization parameter
-kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
 input_size = features.shape[1]
 fold_results = []
@@ -207,8 +201,13 @@ for fold in range(k_folds):
 predictions = sum(all_predictions) / len(all_predictions)
 
 # Save the predictions as pred_anomaly
-pred_df = full_df.with_columns(pl.Series("pred_anomaly", predictions)).select(
-    "year_bin", "anomaly", "pred_anomaly"
+pred_df = (
+    full_df.with_columns(pl.Series("pred_anomaly", predictions))
+    .select("year_bin", "anomaly", "pred_anomaly")
+    .with_columns(
+        pl.col("anomaly").round(config["anomaly_decimal_places"]),
+        pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
+    )
 )
 pred_df.write_csv("Outputs/torch_model_predictions.csv")
 

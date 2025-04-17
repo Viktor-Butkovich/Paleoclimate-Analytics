@@ -1,15 +1,12 @@
 library(tidyverse)
-library(reshape2)
-library(scales)
-library(patchwork)
 library(olsrr)
+library(jsonlite)
 
-present_line <- 2025
-prediction_line <- 200000 # Don't attempt predictions past year 200,000
-test_start <- -500000
-test_end <- -300000
+# Read in the JSON configuration file
+config <- fromJSON("prediction_config.json")
+
 anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched_training.csv") %>%
-    filter(year_bin <= prediction_line)
+    filter(year_bin <= config$forecast_end)
 
 omit_enriched <- FALSE
 if (omit_enriched) {
@@ -17,13 +14,13 @@ if (omit_enriched) {
         select(-contains("delta"), -contains("squared"))
 }
 
-test_anomaly_df <- anomaly_df %>% filter(year_bin > present_line | (year_bin <= test_start & year_bin <= test_end))
+test_anomaly_df <- anomaly_df %>% filter(year_bin > config$present | (year_bin <= config$test_start & year_bin <= config$test_end))
 train_anomaly_df <- anomaly_df %>% anti_join(test_anomaly_df, by = "year_bin") # Train data is non-test data
 
 produce_stepwise_model <- function(model_type, data) {
     # Predict anomaly from all non-delta attributes
     stepwise_model <- ols_step_both_p(
-        lm(anomaly ~ ., data = data %>% select(-year_bin)),
+        model_type(anomaly ~ ., data = data %>% select(-year_bin)),
         details = FALSE
     )
     return(stepwise_model$model)
@@ -46,6 +43,10 @@ print(summary(linear_model))
 linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
 pred_anomaly_df <- anomaly_df %>%
     mutate(pred_anomaly = linear_model_predicted_anomaly) %>%
+    mutate(
+        anomaly = round(anomaly, config$anomaly_decimal_places),
+        pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
+    ) %>%
     select(year_bin, anomaly, pred_anomaly)
 write_csv(pred_anomaly_df, "Outputs/linear_model_predictions.csv")
 
@@ -54,6 +55,10 @@ print(summary(linear_model))
 linear_model_predicted_anomaly <- predict_model(linear_model, anomaly_df)
 pred_anomaly_df <- anomaly_df %>%
     mutate(pred_anomaly = linear_model_predicted_anomaly) %>%
+    mutate(
+        anomaly = round(anomaly, config$anomaly_decimal_places),
+        pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
+    ) %>%
     select(year_bin, anomaly, pred_anomaly)
 write_csv(pred_anomaly_df, "Outputs/linear_model_predictions_lagged.csv")
 
