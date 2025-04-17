@@ -7,11 +7,13 @@ import json
 import warnings
 import numpy as np
 import os
+import json
 
-db_mode = "sql_server"
-if db_mode == "sql_server":
+config = json.load(open("prediction_config.json"))
+
+if config["db_mode"] == "sql_server":
     from modules import db_sqlalchemy as db
-elif db_mode == "sqlite":
+elif config["db_mode"] == "sqlite":
     from modules import db_sqlite as db
 
 # %%
@@ -507,11 +509,6 @@ schemas_to_update = {
     "dim_cosmic": True,
     "dim_location": True,
 }
-db_mode = "sql_server"
-if db_mode == "sql_server":
-    from modules import db_sqlalchemy as db
-elif db_mode == "sqlite":
-    from modules import db_sqlite as db
 
 if update_db:
     db.connect()

@@ -2,11 +2,12 @@
 # Imports
 import polars as pl
 from sklearn.preprocessing import StandardScaler
+import json
 
-db_mode = "sql_server"
-if db_mode == "sql_server":
+config = json.load(open("prediction_config.json"))
+if config["db_mode"] == "sql_server":
     from modules import db_sqlalchemy as db
-elif db_mode == "sqlite":
+elif config["db_mode"] == "sqlite":
     from modules import db_sqlite as db
 
 # %%
@@ -61,7 +62,9 @@ def round_columns(df, num_places, exclude=None):
 
 
 # Round all non-year-bin columns to 5 decimal places - avoid float errors from causing different output each run
-fact_temperature = round_columns(fact_temperature, 5, exclude=["year_bin"])
+fact_temperature = round_columns(
+    fact_temperature, config["anomaly_decimal_places"], exclude=["year_bin"]
+)
 
 # %%
 # Storing raw data
@@ -166,8 +169,6 @@ squared_columns = [
 ]
 preprocessed = preprocessed.with_columns(squared_columns)
 
-preprocessed = round_columns(preprocessed, 5, exclude=["year_bin"])
-
 # %%
 # Apply linear interpolation to fill null values in all past rows
 interpolated = (
@@ -186,6 +187,9 @@ preprocessed = pl.concat([interpolated, non_interpolated], how="vertical").sort(
 
 # %%
 # Storing preprocessed data
+preprocessed = round_columns(
+    preprocessed, config["anomaly_decimal_places"], exclude=["year_bin"]
+)
 preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
 
 training = (
