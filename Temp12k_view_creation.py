@@ -10,6 +10,7 @@ if config["db_mode"] == "sql_server":
 elif config["db_mode"] == "sqlite":
     from modules import db_sqlite as db
 
+
 # %%
 # Setup
 def round_columns(df, num_places, exclude=None):
@@ -22,6 +23,20 @@ def round_columns(df, num_places, exclude=None):
             if col not in exclude
         ]
     )
+
+
+def normalize(df, exclude=None):
+    # Normalize most columns to have a mean of 0 and standard deviation of 1
+    if not exclude:
+        exclude = []
+    scaler = StandardScaler()
+    columns_to_normalize = [col for col in df.columns if col not in exclude]
+    normalized_data = scaler.fit_transform(df.select(columns_to_normalize).to_numpy())
+    normalized_df = pl.DataFrame(normalized_data, schema=columns_to_normalize)
+    return df.with_columns(
+        [pl.Series(name, normalized_df[name]) for name in columns_to_normalize]
+    )
+
 
 db.connect()
 
@@ -68,9 +83,11 @@ fact_temperature = fact_temperature.select(pl.exclude("time_id"))
 
 
 # %%
-# Storing raw data
+# Storing raw data for visualizations (basic preprocessing to minimize floating point errors and false diffs)
 round_columns(
-    fact_temperature, config["anomaly_decimal_places"], exclude=["year_bin"]
+    normalize(fact_temperature, exclude=["year_bin", "anomaly", "co2_ppm"]),
+    config["anomaly_decimal_places"],
+    exclude=["year_bin"],
 ).sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv")
 
 # %%
@@ -120,20 +137,8 @@ preprocessed = preprocessed.with_columns(
     ]
 )
 
-# Normalize most columns to have a mean of 0 and standard deviation of 1
-scaler = StandardScaler()
-columns_to_normalize = [
-    col for col in preprocessed.columns if not ("anomaly" in col or col == "year_bin")
-]
+preprocessed = normalize(preprocessed, exclude=["year_bin", "anomaly"])
 
-normalized_data = scaler.fit_transform(
-    preprocessed.select(columns_to_normalize).to_numpy()
-)
-normalized_df = pl.DataFrame(normalized_data, schema=columns_to_normalize)
-
-preprocessed = preprocessed.with_columns(
-    [pl.Series(name, normalized_df[name]) for name in columns_to_normalize]
-)
 
 # %%
 # Add lagged features from 40,000 and 100,000 years before
