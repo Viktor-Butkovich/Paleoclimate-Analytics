@@ -3,7 +3,7 @@ library(reshape2)
 library(scales)
 library(patchwork)
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched_training.csv") %>% filter(year_bin <= 2025)
 print(head(anomaly_df, 1))
 get_year_bin_plot <- function() {
     plot <- ggplot(anomaly_df, aes(x = year_bin, x = anomaly)) +

@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error
 print("Loading data...")
 
 df = (
-    pl.read_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
+    pl.read_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
     .with_columns(pl.lit(1).alias("unique_id"))
     .rename({"year_bin": "ds", "anomaly": "y"})
     .with_columns((pl.col("ds") / 2000).alias("ds"))

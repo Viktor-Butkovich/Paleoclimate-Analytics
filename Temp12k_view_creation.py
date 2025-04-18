@@ -11,14 +11,32 @@ elif config["db_mode"] == "sqlite":
     from modules import db_sqlite as db
 
 # %%
-# Load in the data
+# Setup
+def round_columns(df, num_places, exclude=None):
+    if not exclude:
+        exclude = []
+    return df.with_columns(
+        [
+            pl.col(col).round(num_places).alias(col)
+            for col in df.columns
+            if col not in exclude
+        ]
+    )
+
 db.connect()
+
+# %%
+# Load in the data
 try:
     print(f"Loading in fact_temperature")
     fact_temperature = pl.DataFrame(db.read_table("fact_temperature"))
     print(f"Loading in dimensions")
     dimensions_dict = {
-        dim: pl.DataFrame(db.read_table(dim))
+        dim: round_columns(
+            pl.DataFrame(db.read_table(dim)),
+            config["anomaly_decimal_places"],
+            exclude=["year_bin"],
+        )
         for dim in ["dim_time", "dim_atmosphere", "dim_orbital", "dim_cosmic"]
     }
 except Exception as e:
@@ -49,26 +67,11 @@ for dim_name, dim_df in dimensions_dict.items():
 fact_temperature = fact_temperature.select(pl.exclude("time_id"))
 
 
-def round_columns(df, num_places, exclude=None):
-    if not exclude:
-        exclude = []
-    return df.with_columns(
-        [
-            pl.col(col).round(num_places).alias(col)
-            for col in df.columns
-            if col not in exclude
-        ]
-    )
-
-
-# Round all non-year-bin columns to 5 decimal places - avoid float errors from causing different output each run
-fact_temperature = round_columns(
-    fact_temperature, config["anomaly_decimal_places"], exclude=["year_bin"]
-)
-
 # %%
 # Storing raw data
-fact_temperature.sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv")
+round_columns(
+    fact_temperature, config["anomaly_decimal_places"], exclude=["year_bin"]
+).sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv")
 
 # %%
 # Preprocess the data for analysis
@@ -190,7 +193,6 @@ preprocessed = pl.concat([interpolated, non_interpolated], how="vertical").sort(
 preprocessed = round_columns(
     preprocessed, config["anomaly_decimal_places"], exclude=["year_bin"]
 )
-preprocessed.write_csv("Outputs/long_term_global_anomaly_view_enriched.csv")
 
 training = (
     preprocessed.drop(
