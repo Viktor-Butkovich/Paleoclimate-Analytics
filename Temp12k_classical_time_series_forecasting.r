@@ -2,6 +2,7 @@ suppressPackageStartupMessages({
     library(tidyverse)
     library(jsonlite)
     library(forecast)
+    library(olsrr)
 })
 
 # Read in the JSON configuration file
@@ -32,5 +33,48 @@ pred_anomaly_df <- anomaly_df %>%
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
 write_csv(pred_anomaly_df, "Outputs/arima_model_predictions.csv")
+
+
+train_anomaly_exog_df <- anomaly_df %>%
+    filter(year_bin <= config$present) %>%
+    select(-year_bin, -anomaly)
+forecast_exog_df <- anomaly_df %>%
+    filter(year_bin > config$present) %>%
+    select(-year_bin, -anomaly)
+
+stepwise_exog <- ols_step_both_p(
+    lm(train_anomaly_df$anomaly ~ ., data = train_anomaly_exog_df),
+    details = FALSE
+)$model
+stepwise_exog_features <- attr(terms(stepwise_exog$model), "term.labels") # Only use the exogeneous features selected by the stepwise model
+
+train_anomaly_exog_df <- train_anomaly_exog_df %>% select(all_of(stepwise_exog_features))
+forecast_exog_df <- forecast_exog_df %>% select(all_of(stepwise_exog_features))
+
+arimax_model <- auto.arima(
+    anomaly_ts,
+    xreg = as.matrix(train_anomaly_exog_df),
+    stepwise = FALSE,
+    approximation = FALSE,
+    seasonal = FALSE
+)
+
+print(summary(arimax_model))
+
+arimax_forecasts <- forecast(
+    arimax_model,
+    xreg = as.matrix(forecast_exog_df),
+    h = horizon_length
+)
+arimax_pred_anomaly <- c(train_anomaly_df$anomaly, arimax_forecasts$mean)
+
+pred_anomaly_df <- anomaly_df %>%
+    mutate(pred_anomaly = arimax_pred_anomaly) %>%
+    mutate(
+        anomaly = round(anomaly, config$anomaly_decimal_places),
+        pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
+    ) %>%
+    select(year_bin, anomaly, pred_anomaly)
+write_csv(pred_anomaly_df, "Outputs/arimax_model_predictions.csv")
 
 print("Saved predictions to csv")

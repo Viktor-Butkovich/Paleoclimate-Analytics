@@ -20,7 +20,7 @@ full_df = (
         .otherwise(pl.col("anomaly"))
         .alias("anomaly")
     )
-    .filter(pl.col("year_bin") < config["forecast_end"])
+    .filter(pl.col("year_bin") <= config["forecast_end"])
 )
 # %%
 # Split the dataset into training and test sets

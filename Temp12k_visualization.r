@@ -227,7 +227,8 @@ for (prediction_type in c(
     "linear_model_predictions",
     "linear_model_predictions_lagged",
     "torch_model_predictions",
-    "arima_model_predictions"
+    "arima_model_predictions",
+    "arimax_model_predictions"
 )) {
     plot_predictions(read.csv(paste("Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
 }
