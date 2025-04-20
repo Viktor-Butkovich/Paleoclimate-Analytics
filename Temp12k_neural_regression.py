@@ -46,6 +46,7 @@ Y_train, Y_test = (
 )
 feature_names = X_train.columns
 
+
 # %%
 # Define model class
 class model:

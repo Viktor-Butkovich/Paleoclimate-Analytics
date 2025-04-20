@@ -2,4 +2,5 @@ python3 Temp12k_ETL.py
 python3 Temp12k_view_creation.py
 Rscript Temp12k_classical_regression.r
 python3 Temp12k_torch_forecasting.py
+Rscript Temp12k_classical_time_series_forecasting.r
 Rscript Temp12k_visualization.r

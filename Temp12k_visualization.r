@@ -1,7 +1,10 @@
-library(tidyverse)
-library(reshape2)
-library(scales)
-library(patchwork)
+suppressPackageStartupMessages({
+    library(tidyverse)
+    library(reshape2)
+    library(scales)
+    library(patchwork)
+})
+options(warn = -1) # Suppress warnings
 
 anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
 # Preprocessed, normalized, missing values interpolated, etc. with constant frequency
@@ -99,7 +102,7 @@ ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
     year_bin >= 1980 ~ 2
 )), aes(x = co2_ppm, y = anomaly, color = factor(color_bin))) +
     geom_point(size = 2.2) +
-    geom_smooth(method = "lm", se = FALSE) +
+    geom_smooth(formula = y ~ x, method = "lm", se = FALSE) +
     theme_classic() +
     scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
 ggsave("Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
@@ -183,6 +186,20 @@ plot_predictions <- function(data, file_path) {
     test_bounds <- c(-500000, -300000)
     train2_bounds <- c(-300000, present_line)
     forecast_bounds <- c(present_line, prediction_line)
+    data <- data %>% mutate(anomaly = ifelse(year_bin > present_line, NA, anomaly)) # Set future anomalies to null for plotting
+    if (grepl("arima", file_path)) {
+        data <- data %>% mutate(pred_anomaly = ifelse(year_bin > present_line, pred_anomaly, NA)) # Set past anomalies to null for plotting - trivial predictions
+        test_split_layers <- list(
+            annotate("text", x = mean(c(train1_bounds[1], train2_bounds[2])), y = -10, label = "Train", hjust = 0.5, color = "black")
+        ) # Pure forecasting methods don't have a train/test split
+    } else {
+        test_split_layers <- list(
+            annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey"),
+            annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black"),
+            annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
+            annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black")
+        )
+    }
     ggplot(data, aes(x = year_bin)) +
         geom_line(aes(y = anomaly, color = "Actual Anomaly")) +
         geom_line(aes(y = pred_anomaly, color = "Predicted Anomaly")) +
@@ -197,12 +214,9 @@ plot_predictions <- function(data, file_path) {
         scale_x_continuous(labels = label_number(scale_cut = cut_short_scale()), breaks = seq(ceiling(min(data$year_bin) / 100000) * 100000, max(data$year_bin), by = 100000)) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
         annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#df00a7") +
-        annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey") +
         annotate("rect", xmin = present_line, xmax = max(data$year_bin), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#889AFF") +
         annotate("text", x = mean(forecast_bounds), y = -10, label = "Forecast", hjust = 0.5, color = "black") +
-        annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black") +
-        annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black") +
-        annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black") +
+        test_split_layers +
         geom_vline(xintercept = present_line, linetype = "dotted", color = "blue") +
         annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black")
     ggsave(paste("Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
@@ -212,7 +226,8 @@ plot_predictions <- function(data, file_path) {
 for (prediction_type in c(
     "linear_model_predictions",
     "linear_model_predictions_lagged",
-    "torch_model_predictions"
+    "torch_model_predictions",
+    "arima_model_predictions"
 )) {
     plot_predictions(read.csv(paste("Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
 }

@@ -1,18 +1,14 @@
-library(tidyverse)
-library(olsrr)
-library(jsonlite)
+suppressPackageStartupMessages({
+    library(tidyverse)
+    library(olsrr)
+    library(jsonlite)
+})
 
 # Read in the JSON configuration file
 config <- fromJSON("prediction_config.json")
 
 anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched_training.csv") %>%
     filter(year_bin <= config$forecast_end)
-
-omit_enriched <- FALSE
-if (omit_enriched) {
-    anomaly_df <- anomaly_df %>%
-        select(-contains("delta"), -contains("squared"))
-}
 
 test_anomaly_df <- anomaly_df %>% filter(year_bin > config$present | (year_bin <= config$test_start & year_bin <= config$test_end))
 train_anomaly_df <- anomaly_df %>% anti_join(test_anomaly_df, by = "year_bin") # Train data is non-test data
