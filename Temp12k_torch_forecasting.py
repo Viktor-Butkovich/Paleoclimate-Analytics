@@ -8,6 +8,14 @@ from sklearn.model_selection import KFold
 import numpy as np
 import json
 
+device = None
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print(f"GPU is available - using {torch.cuda.get_device_name(0)}")
+else:
+    device = torch.device("cpu")
+    print("No GPU available - using CPU")
+
 # %%
 # Load the dataset
 config = json.load(open("prediction_config.json"))
@@ -48,14 +56,14 @@ print(f"Training on {train_df.drop('anomaly', 'year_bin').columns}")
 targets = train_df["anomaly"].to_numpy()
 
 # Convert to PyTorch tensors
-features_tensor = torch.tensor(features, dtype=torch.float32)
-targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, 1)
+features_tensor = torch.tensor(features, dtype=torch.float32).to(device)
+targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, 1).to(device)
 
 
 # %%
 # Train the neural networks
 class AnomalyPredictor(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, device):
         super(AnomalyPredictor, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(input_size, 64),
@@ -63,7 +71,7 @@ class AnomalyPredictor(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, 1),
-        )
+        ).to(device)
 
     def forward(self, x):
         return self.model(x)
@@ -110,7 +118,7 @@ def evaluate_predictions(model, features_tensor):
     """
     model.eval()
     with torch.no_grad():
-        fold_predictions = model(features_tensor).squeeze().numpy()
+        fold_predictions = model(features_tensor).squeeze().cpu().numpy()
     return fold_predictions
 
 
@@ -143,11 +151,11 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
     train_dataset = TensorDataset(train_features, train_targets)
     val_dataset = TensorDataset(val_features, val_targets)
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=512, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
 
     # Initialize the model, loss function, and optimizer
-    model = AnomalyPredictor(input_size)
+    model = AnomalyPredictor(input_size, device)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -189,7 +197,7 @@ print(f"Average Validation Loss: {avg_val_loss:.4f}")
 # %%
 # Evaluate on full dataset
 full_features = full_df.drop("anomaly", "year_bin").to_numpy()
-full_features_tensor = torch.tensor(full_features, dtype=torch.float32)
+full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(device)
 
 all_predictions = []
 for fold in range(k_folds):
