@@ -7,8 +7,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 if os.getcwd().endswith(
     "modules"
 ):  # If running directly from modules, go to directory containing Data
-    os.chdir("..")
-modern_temperature_grid = nc.Dataset("Data/Land_and_Ocean_LatLong1.nc", mode="r")
+    os.chdir("../..")
+modern_temperature_grid = nc.Dataset("../Data/Land_and_Ocean_LatLong1.nc", mode="r")
 """
 print(dataset) outputs
 root group (NETCDF4 data model, file format HDF5):

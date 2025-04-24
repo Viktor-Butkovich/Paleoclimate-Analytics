@@ -9,7 +9,7 @@ import numpy as np
 import os
 import json
 
-config = json.load(open("prediction_config.json"))
+config = json.load(open("../prediction_config.json"))
 
 if config["db_mode"] == "sql_server":
     from modules import db_sqlalchemy as db
@@ -20,11 +20,12 @@ elif config["db_mode"] == "sqlite":
 # Extract the Temp12k data - 1 mya to present
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-data: data_types.Temp12k_data = pkl.load(open("Data/Temp12k_v1_0_0.pkl", "rb"))
+data: data_types.Temp12k_data = pkl.load(open("../Data/Temp12k_v1_0_0.pkl", "rb"))
 # The data has "TS" and "D" sections
-json.dump(data["TS"][0], open("Data/raw/example_ts_sample.json", "w"))
+json.dump(data["TS"][0], open("../Data/raw/example_ts_sample.json", "w"))
 json.dump(
-    data["D"][next(iter(data["D"].keys()))], open("Data/raw/example_d_sample.json", "w")
+    data["D"][next(iter(data["D"].keys()))],
+    open("../Data/raw/example_d_sample.json", "w"),
 )
 # A D sample seems to have a collection of data types (temperature, age, depth, material, sensorSpecies, etc.) - tracks all variables over time from a particular study
 # A TS sample seems to have a single data type (temperature, depth, etc.) paired with age - tracks a single variable over time from a particular study
@@ -156,8 +157,8 @@ for sample in data["TS"]:
     #   C37.concentration: set of compounds produced by algae, used to estimate past sea surface temperatures
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
 #   We want to find samples regarding temperature
-json.dump(temperature_data, open("Data/raw/temperature_data.json", "w"))
-json.dump(rewritten_samples, open("Data/raw/anomaly_outlier_samples.json", "w"))
+json.dump(temperature_data, open("../Data/raw/temperature_data.json", "w"))
+json.dump(rewritten_samples, open("../Data/raw/anomaly_outlier_samples.json", "w"))
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
 # As shown in the below plot, this sample was taken near the east coast of the Arabian Peninsula
@@ -179,7 +180,7 @@ temperature_df = temperature_df.filter(
 # %%
 # Extract/Transform Berkeley Earth recent climate data (since 1850)
 recompute = False
-if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
+if recompute or not os.path.exists("../Data/precomputed_modern_temperature.csv"):
     array_data = modern_temperature.modern_temperature_grid.variables["temperature"][:]
     # Get the dimensions
     months, latitudes, longitudes = array_data.shape
@@ -285,9 +286,9 @@ if recompute or not os.path.exists("Data/precomputed_modern_temperature.csv"):
         pl.col("geo_meanLat").cast(pl.Int64),
         pl.col("geo_meanLon").cast(pl.Int64),
     )
-    modern_temperature_df.write_csv("Data/precomputed_modern_temperature.csv")
+    modern_temperature_df.write_csv("../Data/precomputed_modern_temperature.csv")
 else:
-    modern_temperature_df = pl.read_csv("Data/precomputed_modern_temperature.csv")
+    modern_temperature_df = pl.read_csv("../Data/precomputed_modern_temperature.csv")
 
 # Ensure the column order matches
 temperature_df = pl.concat(
@@ -317,7 +318,7 @@ valid_year_bins = list(temperature_df["year_bin"].unique())
 
 # %%
 # Incorporate orbital simulation data (Milankovitch cycles)
-orbital_df = pl.read_csv("Data/milankovitch_sim_extracted.csv")
+orbital_df = pl.read_csv("../Data/milankovitch_sim_extracted.csv")
 orbital_df = orbital_df.rename({"global.insolation": "global_insolation"})
 orbital_df = util.year_bins_transform(orbital_df, valid_year_bins)
 valid_year_bins += list(orbital_df["year_bin"].unique())
@@ -327,7 +328,7 @@ valid_year_bins = sorted(
 
 # %%
 # Incorporate CO2 data from ice core samples from last 800,000 years
-co2_df = pl.read_csv("Data/ice_core_800k_co2_extracted.csv")
+co2_df = pl.read_csv("../Data/ice_core_800k_co2_extracted.csv")
 co2_df = (co2_df.with_columns((1950 - pl.col("age_gas_calBP")).alias("year"))).drop(
     "age_gas_calBP"
 )
@@ -335,7 +336,7 @@ co2_df = util.year_bins_transform(co2_df, valid_year_bins)
 
 # %%
 # Incorporate modern CO2 data since 1979
-modern_atmosphere_df = pl.read_csv("Data/co2_annmean_gl_extracted.csv")
+modern_atmosphere_df = pl.read_csv("../Data/co2_annmean_gl_extracted.csv")
 modern_atmosphere_df = modern_atmosphere_df.with_columns(
     pl.col("year").alias("year_bin"),
     pl.col("mean").alias("co2_ppm"),
@@ -369,9 +370,9 @@ co2_df = co2_df.group_by("year_bin").agg(
 # %%
 # Incorporate Beryllium-10 sediment data from 1 MYA Anderson 2018 records
 file_paths = [
-    "Data/anderson2018-u1428-Extracted.csv",
-    "Data/anderson2018-u1429-Extracted.csv",
-    "Data/anderson2018-u1430-Extracted.csv",
+    "../Data/anderson2018-u1428-Extracted.csv",
+    "../Data/anderson2018-u1429-Extracted.csv",
+    "../Data/anderson2018-u1430-Extracted.csv",
 ]
 
 anderson_be10_df = pl.concat(
@@ -387,7 +388,7 @@ anderson_be10_df = (
 )
 
 dean_be10_df = (
-    pl.read_csv("Data/dean2006b-Extracted.csv")
+    pl.read_csv("../Data/dean2006b-Extracted.csv")
     .with_columns(((1950 - (pl.col("age_calkaBP") * 1000)).alias("year")))
     .rename({"Be ppm": "be_ppm"})
     .select(["year", "be_ppm"])
@@ -400,7 +401,7 @@ be10_df = util.year_bins_transform(be10_df, valid_year_bins)
 
 # %%
 # Incorporate VADM magnetic field strength data
-vadm_df = pl.read_csv("Data/VADM.csv")
+vadm_df = pl.read_csv("../Data/VADM.csv")
 
 # Filter out years outside of the valid year bins bounds
 vadm_df = vadm_df.filter(pl.col("year") >= min(valid_year_bins))
@@ -523,7 +524,8 @@ if update_db:
                 )
     except Exception as e:
         print(e)
-    db.close()
+    finally:
+        db.close()
     print("Finished updating database")
 
 # %%

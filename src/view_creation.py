@@ -4,7 +4,7 @@ import polars as pl
 from sklearn.preprocessing import StandardScaler
 import json
 
-config = json.load(open("prediction_config.json"))
+config = json.load(open("../prediction_config.json"))
 if config["db_mode"] == "sql_server":
     from modules import db_sqlalchemy as db
 elif config["db_mode"] == "sqlite":
@@ -88,7 +88,7 @@ round_columns(
     normalize(fact_temperature, exclude=["year_bin", "anomaly", "co2_ppm"]),
     config["anomaly_decimal_places"],
     exclude=["year_bin"],
-).sort("year_bin").write_csv("Outputs/raw_global_anomaly_view.csv")
+).sort("year_bin").write_csv("../Outputs/raw_global_anomaly_view.csv")
 
 # %%
 # Preprocess the data for analysis
@@ -218,7 +218,7 @@ training = (
     .with_columns(pl.col("anomaly").fill_null(0))
 )
 
-training.write_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
+training.write_csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv")
 
 preprocessed = preprocessed.drop(
     [
@@ -230,7 +230,7 @@ preprocessed = preprocessed.drop(
 print("Finished saving preprocessed views")
 print(preprocessed)
 preprocessed.write_csv(
-    "Outputs/long_term_global_anomaly_view.csv"
+    "../Outputs/long_term_global_anomaly_view.csv"
 )  # Only contains original columns
 
 # %%

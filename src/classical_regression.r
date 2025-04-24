@@ -5,9 +5,9 @@ suppressPackageStartupMessages({
 })
 
 # Read in the JSON configuration file
-config <- fromJSON("prediction_config.json")
+config <- fromJSON("../prediction_config.json")
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view_enriched_training.csv") %>%
+anomaly_df <- read.csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv") %>%
     filter(year_bin <= config$forecast_end)
 
 test_anomaly_df <- anomaly_df %>% filter(year_bin > config$present | (year_bin <= config$test_start & year_bin <= config$test_end))
@@ -44,7 +44,7 @@ pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_csv(pred_anomaly_df, "Outputs/linear_model_predictions.csv")
+write_csv(pred_anomaly_df, "../Outputs/linear_model_predictions.csv")
 
 linear_model <- produce_stepwise_model(lm, train_anomaly_df)
 print(summary(linear_model))
@@ -56,6 +56,6 @@ pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_csv(pred_anomaly_df, "Outputs/linear_model_predictions_lagged.csv")
+write_csv(pred_anomaly_df, "../Outputs/linear_model_predictions_lagged.csv")
 
 print("Saved predictions to csv")

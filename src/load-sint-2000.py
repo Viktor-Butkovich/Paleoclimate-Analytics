@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # %%
 # Load the .mat file
-data = loadmat("Data/raw/Sint2000.mat")
+data = loadmat("../Data/raw/Sint2000.mat")
 
 # Access the variables in the file
 print(data.keys())  # Lists all variables in the .mat file
@@ -38,6 +38,6 @@ plt.show()
 
 # %%
 # Save the DataFrame to a CSV file
-df.to_csv("Data/VADM.csv", index=False)
+df.to_csv("../Data/VADM.csv", index=False)
 
 # %%

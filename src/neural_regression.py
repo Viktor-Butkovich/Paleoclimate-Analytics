@@ -18,7 +18,7 @@ import json
 # Load data
 print("Loading data...")
 
-df = pl.read_csv("Data/anomaly_training_ready.csv")
+df = pl.read_csv("../Data/anomaly_training_ready.csv")
 lag = False
 if lag:
     df = (

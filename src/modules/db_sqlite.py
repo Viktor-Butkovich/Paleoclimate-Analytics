@@ -1,6 +1,6 @@
 import sqlalchemy
 
-conn_str = "sqlite:///Data/Temp12k-sqlite.db"  # SQLite connection string
+conn_str = "sqlite:///../Data/Temp12k-sqlite.db"  # SQLite connection string
 
 engine: sqlalchemy.Engine = None
 conn: sqlalchemy.Connection = None
@@ -15,11 +15,13 @@ def connect():
     global engine, conn
     engine = sqlalchemy.create_engine(conn_str)
     conn = engine.connect()
+    conn.execute(sqlalchemy.text("PRAGMA journal_mode=WAL;"))
 
 
 def close():
     conn.commit()
     conn.close()
+    engine.dispose()
 
 
 def drop_table(table_name: str):

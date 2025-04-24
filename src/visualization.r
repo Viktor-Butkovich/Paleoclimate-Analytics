@@ -6,10 +6,10 @@ suppressPackageStartupMessages({
 })
 options(warn = -1) # Suppress warnings
 
-anomaly_df <- read.csv("Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv("../Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
 # Preprocessed, normalized, missing values interpolated, etc. with constant frequency
 
-anomaly_df_raw <- read.csv("Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025 & year_bin >= -700000)
+anomaly_df_raw <- read.csv("../Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025 & year_bin >= -700000)
 # Raw data, good for actual attribute values and high-frequency time periods (recent)
 
 ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -25,7 +25,7 @@ ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly
     theme_classic() +
     scale_y_continuous(limits = c(-10, 10)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("Outputs/long_term_temperature_anomaly.png", width = 10, height = 6)
+ggsave("../Outputs/long_term_temperature_anomaly.png", width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -38,7 +38,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("Outputs/long_term_co2_ppm.png", width = 10, height = 6)
+ggsave("../Outputs/long_term_co2_ppm.png", width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
@@ -54,7 +54,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = anom
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-3, 3))
-ggsave("Outputs/since_ice_age_temperature_anomaly.png", width = 10, height = 6)
+ggsave("../Outputs/since_ice_age_temperature_anomaly.png", width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -69,7 +69,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = co2_
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("Outputs/since_ice_age_co2_ppm.png", width = 10, height = 6)
+ggsave("../Outputs/since_ice_age_co2_ppm.png", width = 10, height = 6)
 
 latest_anomaly <- tail(anomaly_df_raw$anomaly, 1)
 ggplot(anomaly_df_raw, aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -83,7 +83,7 @@ ggplot(anomaly_df_raw, aes(x = year_bin, y = anomaly, color = anomaly)) +
     theme_classic() +
     scale_y_continuous(limits = c(-2, 2)) +
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
-ggsave("Outputs/modern_temperature_anomaly.png", width = 10, height = 6)
+ggsave("../Outputs/modern_temperature_anomaly.png", width = 10, height = 6)
 
 ggplot(anomaly_df_raw, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -94,7 +94,7 @@ ggplot(anomaly_df_raw, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
-ggsave("Outputs/modern_co2_ppm.png", width = 10, height = 6)
+ggsave("../Outputs/modern_co2_ppm.png", width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
     year_bin < 1850 ~ 0,
@@ -105,7 +105,7 @@ ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
     geom_smooth(formula = y ~ x, method = "lm", se = FALSE) +
     theme_classic() +
     scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
-ggsave("Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
+ggsave("../Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
 
 group_size <- 1
 glaciation_orbit_df <- anomaly_df_raw %>%
@@ -155,7 +155,7 @@ anomaly_insolation_plot <- ggplot(glaciation_orbit_df, aes(x = global_insolation
     theme_classic()
 combined_plot <- glaciation_orbit_plot / (anomaly_orbit_plot | anomaly_insolation_plot)
 combined_plot
-ggsave("Outputs/orbital_parameters_glacial_cycles_trends.png", width = 15, height = 9)
+ggsave("../Outputs/orbital_parameters_glacial_cycles_trends.png", width = 15, height = 9)
 
 solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     geom_line(aes(y = rescale(solar_modulation), color = "Solar Modulation (Φ)"), linewidth = 1.2) +
@@ -177,7 +177,7 @@ solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     ggtitle("Solar Modulation and Temperature Anomaly with Ice Age Overlays")
 
 solar_modulation_plot
-ggsave("Outputs/long_term_solar_modulation_plot.png", solar_modulation_plot, width = 12, height = 6)
+ggsave("../Outputs/long_term_solar_modulation_plot.png", solar_modulation_plot, width = 12, height = 6)
 
 plot_predictions <- function(data, file_path) {
     present_line <- 2025 # Include these in a shared configuration file rather than hardcoding
@@ -219,7 +219,7 @@ plot_predictions <- function(data, file_path) {
         test_split_layers +
         geom_vline(xintercept = present_line, linetype = "dotted", color = "blue") +
         annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black")
-    ggsave(paste("Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
+    ggsave(paste("../Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
 }
 
 
@@ -231,7 +231,7 @@ for (prediction_type in c(
     "arima_model_predictions",
     "arimax_model_predictions"
 )) {
-    plot_predictions(read.csv(paste("Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
+    plot_predictions(read.csv(paste("../Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
 }
 
 print("Plots saved successfully")

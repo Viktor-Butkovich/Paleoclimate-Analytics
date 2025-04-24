@@ -6,5 +6,5 @@
     "anomaly_decimal_places": 5,
     "parallel": false,
     "gpu": false,
-    "db_mode": "sql_server"
+    "db_mode": "sqlite"
 }

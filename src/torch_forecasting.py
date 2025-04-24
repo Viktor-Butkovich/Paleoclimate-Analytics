@@ -15,7 +15,7 @@ import json
 
 # %%
 # Load the dataset
-config = json.load(open("prediction_config.json"))
+config = json.load(open("../prediction_config.json"))
 
 device = None
 if config["gpu"] and torch.cuda.is_available():
@@ -27,7 +27,7 @@ else:
     print("Using CPU")
 
 full_df = (
-    pl.read_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
+    pl.read_csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv")
     .with_columns(
         pl.when(pl.col("year_bin") > config["present"])
         .then(None)
@@ -175,7 +175,7 @@ def train_fold(fold, train_idx, val_idx):
     print(f"Training Loss for Fold {fold + 1}: {train_loss:.4f}")
     print(f"Validation Loss for Fold {fold + 1}: {val_loss:.4f}")
 
-    torch.save(model.state_dict(), f"models/model_fold_{fold + 1}.pth")
+    torch.save(model.state_dict(), f"../cached_models/model_fold_{fold + 1}.pth")
     return val_loss
 
 
@@ -224,7 +224,7 @@ full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(devic
 all_predictions = []
 for fold in range(k_folds):
     model = AnomalyPredictor(input_size, device)
-    model.load_state_dict(torch.load(f"models/model_fold_{fold + 1}.pth"))
+    model.load_state_dict(torch.load(f"../cached_models/model_fold_{fold + 1}.pth"))
     fold_predictions = evaluate_predictions(model, full_features_tensor)
     all_predictions.append(fold_predictions)
 
@@ -240,7 +240,7 @@ pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-pred_df.write_csv("Outputs/genetic_torch_model_predictions.csv")
+pred_df.write_csv("../Outputs/torch_model_predictions.csv")
 
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
