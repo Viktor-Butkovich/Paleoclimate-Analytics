@@ -1,24 +1,30 @@
 # %%
 # Imports
+import time
+
+start_time = time.time()
+print(f"Starting script at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 import polars as pl
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import KFold
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import json
-
-device = None
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    print(f"GPU is available - using {torch.cuda.get_device_name(0)}")
-else:
-    device = torch.device("cpu")
-    print("No GPU available - using CPU")
 
 # %%
 # Load the dataset
 config = json.load(open("prediction_config.json"))
+
+device = None
+if config["gpu"] and torch.cuda.is_available():
+    device = torch.device("cuda")
+    # device = torch.device("cpu")
+    print(f"GPU is available - using {torch.cuda.get_device_name(0)}")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 full_df = (
     pl.read_csv("Outputs/long_term_global_anomaly_view_enriched_training.csv")
@@ -61,7 +67,7 @@ targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, 1).to(devic
 
 
 # %%
-# Train the neural networks
+# Define training/evaluation functions
 class AnomalyPredictor(nn.Module):
     def __init__(self, input_size, device):
         super(AnomalyPredictor, self).__init__()
@@ -122,26 +128,8 @@ def evaluate_predictions(model, features_tensor):
     return fold_predictions
 
 
-# Set random seeds
-seed = 42
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-# K-Fold Cross Validation
-k_folds = 5
-regularization_lambda = 0.05  # L2 (ridge) regularization parameter
-kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
-
-input_size = features.shape[1]
-fold_results = []
-
-residuals = []
-
-for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
-    print(f"Fold {fold + 1}/{k_folds}")
+def train_fold(fold, train_idx, val_idx):
+    print(f"Starting Fold {fold + 1}/{k_folds}")
 
     # Split data into training and validation sets
     train_features, val_features = features_tensor[train_idx], features_tensor[val_idx]
@@ -187,8 +175,42 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
     print(f"Training Loss for Fold {fold + 1}: {train_loss:.4f}")
     print(f"Validation Loss for Fold {fold + 1}: {val_loss:.4f}")
 
-    fold_results.append(val_loss)
     torch.save(model.state_dict(), f"models/model_fold_{fold + 1}.pth")
+    return val_loss
+
+
+# %%
+# Train the neural networks
+
+# Set random seeds
+seed = 42
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+# K-Fold Cross Validation
+k_folds = 5
+regularization_lambda = 0.05  # L2 (ridge) regularization parameter
+kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+
+input_size = features.shape[1]
+fold_results = []
+
+residuals = []
+
+if config["parallel"]:
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(train_fold, fold, train_idx, val_idx)
+            for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor))
+        ]
+        fold_results = [future.result() for future in futures]
+else:
+    for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
+        val_loss = train_fold(fold, train_idx, val_idx)
+        fold_results.append(val_loss)
 
 # Average validation loss across folds
 avg_val_loss = np.mean(fold_results)
@@ -201,6 +223,7 @@ full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(devic
 
 all_predictions = []
 for fold in range(k_folds):
+    model = AnomalyPredictor(input_size, device)
     model.load_state_dict(torch.load(f"models/model_fold_{fold + 1}.pth"))
     fold_predictions = evaluate_predictions(model, full_features_tensor)
     all_predictions.append(fold_predictions)
@@ -219,6 +242,8 @@ pred_df = (
 )
 pred_df.write_csv("Outputs/torch_model_predictions.csv")
 
+end_time = time.time()
+print(f"Script finished in {end_time - start_time:.2f} seconds")
 print("Saved predictions to csv")
 
 # %%

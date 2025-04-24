@@ -4,5 +4,7 @@
     "test_start": -500000,
     "test_end": -300000,
     "anomaly_decimal_places": 5,
+    "parallel": false,
+    "gpu": false,
     "db_mode": "sql_server"
 }

@@ -82,3 +82,18 @@ Also look into using smoothed variables with s() to reduce noise and for easier 
     Try out a gradient-boosted tree regressor and an xgboost regressor
     This guide looks very helpful for time series validation: https://towardsdatascience.com/model-validation-techniques-for-time-series-3518269bd5b3/
 
+Figure out what Adam optimizer does
+Try GLM as opposed to LM
+Try out xgboost
+Replace engineered squared features with R's polynomial functionality
+Try out DBT as a way to share the code platform-independently
+Add baseline SARIMAX (or ARIMAX) model
+
+Installing PyTorch with CUDA GPU acceleration enabled:
+    pip3 install --user torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+Benchmarks:
+GPU with parallel processing of folds: 60 seconds
+GPU with sequential processing of folds: 67 seconds
+CPU with parallel processing of folds: 99 seconds
+CPU with sequential processing of folds: 44 seconds
