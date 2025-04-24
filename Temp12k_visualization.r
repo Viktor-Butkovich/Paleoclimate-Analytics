@@ -227,6 +227,7 @@ for (prediction_type in c(
     "linear_model_predictions",
     "linear_model_predictions_lagged",
     "torch_model_predictions",
+    "genetic_torch_model_predictions",
     "arima_model_predictions",
     "arimax_model_predictions"
 )) {
