@@ -77,21 +77,30 @@ targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, 1).to(devic
 # %%
 # Define training/evaluation functions
 class AnomalyPredictor(nn.Module):
-    def __init__(self, input_size, device):
+    def __init__(
+        self, input_size: int, layer_sizes: List[int], device: torch.device
+    ) -> None:
         super(AnomalyPredictor, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_size, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1),
-        ).to(device)
+        layers = []
+        previous_size = input_size
+        for size in layer_sizes:
+            layers.append(nn.Linear(previous_size, size))
+            layers.append(nn.ReLU())
+            previous_size = size
+        layers.append(nn.Linear(previous_size, 1))
+        self.model = nn.Sequential(*layers).to(device)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
 
-def run_loss_train(model, data_loader, criterion, regularization_lambda, optimizer):
+def run_loss_train(
+    model: AnomalyPredictor,
+    data_loader: torch.utils.data.DataLoader,
+    criterion: torch.nn.modules.loss._Loss,
+    regularization_lambda: float,
+    optimizer: torch.optim.Optimizer,
+) -> None:
     """
     Description: Trains the inputted model for 1 epoch
     """
@@ -110,7 +119,12 @@ def run_loss_train(model, data_loader, criterion, regularization_lambda, optimiz
         optimizer.step()
 
 
-def evaluate_loss(model, data_loader, criterion, regularization_lambda):
+def evaluate_loss(
+    model: AnomalyPredictor,
+    data_loader: torch.utils.data.DataLoader,
+    criterion: torch.nn.modules.loss._Loss,
+    regularization_lambda: float,
+):
     """
     Description: Returns the loss of the inputted model on the inputted data
     """
@@ -126,7 +140,9 @@ def evaluate_loss(model, data_loader, criterion, regularization_lambda):
     return total_loss / len(data_loader)
 
 
-def evaluate_predictions(model, features_tensor):
+def evaluate_predictions(
+    model: AnomalyPredictor, features_tensor: torch.tensor
+) -> np.ndarray:
     """
     Description: Returns the predictions of the inputted model on the inputted data
     """
@@ -136,14 +152,9 @@ def evaluate_predictions(model, features_tensor):
     return fold_predictions
 
 
-def train_fold(fold, train_idx, val_idx, hyperparameters=None):
-    if not hyperparameters:
-        hyperparameters = {
-            constants.EPOCHS: 2000,
-            constants.PATIENCE: 10,
-            constants.ADAM_LR: 0.001,
-            constants.REGULARIZATION_LAMBDA: 0.05,  # L2 (ridge) regularization parameter
-        }
+def train_fold(
+    fold: int, train_idx: int, val_idx: int, hyperparameters: Dict[str, Any]
+) -> Dict[str, Any]:
     print(f"Starting Fold {fold + 1}/{k_folds}")
 
     # Split data into training and validation sets
@@ -158,7 +169,7 @@ def train_fold(fold, train_idx, val_idx, hyperparameters=None):
     val_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
 
     # Initialize the model, loss function, and optimizer
-    model = AnomalyPredictor(input_size, device)
+    model = AnomalyPredictor(input_size, hyperparameters[constants.LAYER_SIZES], device)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(
         model.parameters(), lr=hyperparameters[constants.ADAM_LR]
@@ -213,6 +224,14 @@ def train_fold(fold, train_idx, val_idx, hyperparameters=None):
 class Individual:
     def __init__(self, genome: Dict[str, Any]) -> None:
         self.genome = genome
+        if not self.genome:
+            self.genome = {
+                constants.LAYER_SIZES: [64, 32],
+                constants.EPOCHS: 2000,
+                constants.PATIENCE: 10,
+                constants.ADAM_LR: 0.001,
+                constants.REGULARIZATION_LAMBDA: 0.05,
+            }
         self.fitness: float = None
         self.state_dicts: List[Dict[str, Any]] = []
 
@@ -253,15 +272,30 @@ class Individual:
                 self.state_dicts.append(result[constants.MODEL].state_dict())
         self.fitness = np.mean(fold_results)
 
-    def predict(self, features_tensor) -> np.ndarray:
+    def predict(self, features_tensor: torch.tensor) -> np.ndarray:
         predictions = []
         for fold, state_dict in enumerate(self.state_dicts):
-            model = AnomalyPredictor(input_size, device)
+            model = AnomalyPredictor(
+                input_size, self.genome[constants.LAYER_SIZES], device
+            )
             model.load_state_dict(state_dict)
             fold_predictions = evaluate_predictions(model, features_tensor)
             predictions.append(fold_predictions)
         # Combine predictions from all folds (e.g., average them)
         return np.mean(predictions, axis=0)
+
+    def __str__(self) -> str:
+        layer_config = " -> ".join(
+            map(str, [input_size] + self.genome[constants.LAYER_SIZES] + [1])
+        )
+        hyperparameters = "\n".join(
+            f"    {key}: {value}" for key, value in self.genome.items()
+        )
+        return (
+            f"Layer Configuration: {layer_config}\n"
+            f"Hyperparameters:\n{hyperparameters}\n"
+            f"Average Validation Loss: {self.fitness:.4f}"
+        )
 
 
 # %%
@@ -281,7 +315,11 @@ kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
 default_individual = Individual(genome=None)
 default_individual.evaluate(kf)
-print(f"Average Validation Loss: {default_individual.fitness:.4f}")
+
+# %%
+# Identify best individual
+best_individual = default_individual
+print(f"Best individual: \n\n{best_individual}")
 
 # Evaluate on full dataset
 predictions = default_individual.predict(full_features_tensor)
