@@ -167,5 +167,5 @@ Rplots.pdf
 Data/*
 evolution_progress/*
 lightning_logs/*
-models/*
+cached_models/*
 Outputs/EDA_plot.png

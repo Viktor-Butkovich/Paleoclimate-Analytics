@@ -198,8 +198,6 @@ kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 input_size = features.shape[1]
 fold_results = []
 
-residuals = []
-
 if config["parallel"]:
     with ThreadPoolExecutor() as executor:
         futures = [

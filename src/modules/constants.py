@@ -1,0 +1,7 @@
+EPOCHS = "epochs"
+PATIENCE = "patience"
+ADAM_LR = "adam_lr"
+REGULARIZATION_LAMBDA = "regularization_lambda"
+MODEL = "model"
+TRAIN_LOSS = "train_loss"
+VAL_LOSS = "val_loss"

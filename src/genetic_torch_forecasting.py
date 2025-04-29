@@ -10,6 +10,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import KFold
 from concurrent.futures import ThreadPoolExecutor
+from modules import constants
+from typing import Dict, List, Any
 import numpy as np
 import json
 
@@ -36,6 +38,11 @@ full_df = (
     )
     .filter(pl.col("year_bin") <= config["forecast_end"])
 )
+full_features = full_df.drop(
+    "anomaly", "year_bin"
+).to_numpy()  # All input features for entire time series, designed for final prediction
+full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(device)
+
 # %%
 # Split the dataset into training and test sets
 test_df = full_df.filter(
@@ -57,6 +64,7 @@ train_df = full_df.filter(
 
 # Prepare the data
 features = train_df.drop("anomaly", "year_bin").to_numpy()
+input_size = features.shape[1]
 print(f"Training on {train_df.drop('anomaly', 'year_bin').columns}")
 
 targets = train_df["anomaly"].to_numpy()
@@ -128,7 +136,14 @@ def evaluate_predictions(model, features_tensor):
     return fold_predictions
 
 
-def train_fold(fold, train_idx, val_idx):
+def train_fold(fold, train_idx, val_idx, hyperparameters=None):
+    if not hyperparameters:
+        hyperparameters = {
+            constants.EPOCHS: 2000,
+            constants.PATIENCE: 10,
+            constants.ADAM_LR: 0.001,
+            constants.REGULARIZATION_LAMBDA: 0.05,  # L2 (ridge) regularization parameter
+        }
     print(f"Starting Fold {fold + 1}/{k_folds}")
 
     # Split data into training and validation sets
@@ -145,18 +160,30 @@ def train_fold(fold, train_idx, val_idx):
     # Initialize the model, loss function, and optimizer
     model = AnomalyPredictor(input_size, device)
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=hyperparameters[constants.ADAM_LR]
+    )
 
-    epochs = 2000
     prev_val_loss = float("inf")
-    original_patience = 10
+    original_patience = hyperparameters[constants.PATIENCE]
     patience = original_patience
-    for epoch in range(epochs):
+    for epoch in range(hyperparameters[constants.EPOCHS]):
         # Train the model
-        run_loss_train(model, train_loader, criterion, regularization_lambda, optimizer)
+        run_loss_train(
+            model,
+            train_loader,
+            criterion,
+            hyperparameters[constants.REGULARIZATION_LAMBDA],
+            optimizer,
+        )
 
         # Early stopping: break if validation loss didn't improve
-        val_loss = evaluate_loss(model, val_loader, criterion, regularization_lambda)
+        val_loss = evaluate_loss(
+            model,
+            val_loader,
+            criterion,
+            hyperparameters[constants.REGULARIZATION_LAMBDA],
+        )
         if val_loss > prev_val_loss:
             patience -= 1
             if patience <= 0:
@@ -169,14 +196,72 @@ def train_fold(fold, train_idx, val_idx):
         prev_val_loss = val_loss
 
     # Show final fold performance
-    val_loss = evaluate_loss(model, val_loader, criterion, regularization_lambda)
-    train_loss = evaluate_loss(model, train_loader, criterion, regularization_lambda)
+    val_loss = evaluate_loss(
+        model, val_loader, criterion, hyperparameters[constants.REGULARIZATION_LAMBDA]
+    )
+    train_loss = evaluate_loss(
+        model, train_loader, criterion, hyperparameters[constants.REGULARIZATION_LAMBDA]
+    )
 
-    print(f"Training Loss for Fold {fold + 1}: {train_loss:.4f}")
-    print(f"Validation Loss for Fold {fold + 1}: {val_loss:.4f}")
+    return {
+        constants.MODEL: model,
+        constants.TRAIN_LOSS: train_loss,
+        constants.VAL_LOSS: val_loss,
+    }
 
-    torch.save(model.state_dict(), f"../cached_models/model_fold_{fold + 1}.pth")
-    return val_loss
+
+class Individual:
+    def __init__(self, genome: Dict[str, Any]) -> None:
+        self.genome = genome
+        self.fitness: float = None
+        self.state_dicts: List[Dict[str, Any]] = []
+
+    def evaluate(self, kf: KFold) -> None:
+        self.state_dicts = []
+        if config["parallel"]:
+            with ThreadPoolExecutor() as executor:
+                futures = [
+                    executor.submit(
+                        train_fold,
+                        fold,
+                        train_idx,
+                        val_idx,
+                        hyperparameters=self.genome,
+                    )
+                    for fold, (train_idx, val_idx) in enumerate(
+                        kf.split(features_tensor)
+                    )
+                ]
+                fold_results = [
+                    future.result()[constants.VAL_LOSS] for future in futures
+                ]
+                fold_train_results = [
+                    future.result()[constants.TRAIN_LOSS] for future in futures
+                ]
+                self.state_dicts = [
+                    future.result()[constants.MODEL].state_dict() for future in futures
+                ]
+        else:
+            fold_results = []
+            fold_train_results = []
+            for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
+                result = train_fold(
+                    fold, train_idx, val_idx, hyperparameters=self.genome
+                )
+                fold_results.append(result[constants.VAL_LOSS])
+                fold_train_results.append(result[constants.TRAIN_LOSS])
+                self.state_dicts.append(result[constants.MODEL].state_dict())
+        self.fitness = np.mean(fold_results)
+
+    def predict(self, features_tensor) -> np.ndarray:
+        predictions = []
+        for fold, state_dict in enumerate(self.state_dicts):
+            model = AnomalyPredictor(input_size, device)
+            model.load_state_dict(state_dict)
+            fold_predictions = evaluate_predictions(model, features_tensor)
+            predictions.append(fold_predictions)
+        # Combine predictions from all folds (e.g., average them)
+        return np.mean(predictions, axis=0)
 
 
 # %%
@@ -192,46 +277,19 @@ torch.backends.cudnn.benchmark = False
 
 # K-Fold Cross Validation
 k_folds = 5
-regularization_lambda = 0.05  # L2 (ridge) regularization parameter
 kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
-input_size = features.shape[1]
-fold_results = []
+default_individual = Individual(genome=None)
+default_individual.evaluate(kf)
+print(f"Average Validation Loss: {default_individual.fitness:.4f}")
 
-residuals = []
-
-if config["parallel"]:
-    with ThreadPoolExecutor() as executor:
-        futures = [
-            executor.submit(train_fold, fold, train_idx, val_idx)
-            for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor))
-        ]
-        fold_results = [future.result() for future in futures]
-else:
-    for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
-        val_loss = train_fold(fold, train_idx, val_idx)
-        fold_results.append(val_loss)
-
-# Average validation loss across folds
-avg_val_loss = np.mean(fold_results)
-print(f"Average Validation Loss: {avg_val_loss:.4f}")
+# Evaluate on full dataset
+predictions = default_individual.predict(full_features_tensor)
 
 # %%
-# Evaluate on full dataset
-full_features = full_df.drop("anomaly", "year_bin").to_numpy()
-full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(device)
+# Save best results
 
-all_predictions = []
-for fold in range(k_folds):
-    model = AnomalyPredictor(input_size, device)
-    model.load_state_dict(torch.load(f"../cached_models/model_fold_{fold + 1}.pth"))
-    fold_predictions = evaluate_predictions(model, full_features_tensor)
-    all_predictions.append(fold_predictions)
-
-# Combine predictions from all folds (e.g., average them)
-predictions = sum(all_predictions) / len(all_predictions)
-
-# Save the predictions as pred_anomaly
+# Store the predictions as pred_anomaly
 pred_df = (
     full_df.with_columns(pl.Series("pred_anomaly", predictions))
     .select("year_bin", "anomaly", "pred_anomaly")
