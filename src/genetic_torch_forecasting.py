@@ -1,6 +1,8 @@
 # %%
 # Imports
 import time
+import random
+from copy import deepcopy
 
 start_time = time.time()
 print(f"Starting script at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
@@ -9,6 +11,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import KFold
+from sklearn.preprocessing import MinMaxScaler
 from concurrent.futures import ThreadPoolExecutor
 from modules import constants
 from typing import Dict, List, Any
@@ -153,9 +156,14 @@ def evaluate_predictions(
 
 
 def train_fold(
-    fold: int, train_idx: int, val_idx: int, hyperparameters: Dict[str, Any]
+    fold: int,
+    train_idx: int,
+    val_idx: int,
+    hyperparameters: Dict[str, Any],
+    verbosity: int = 1,
 ) -> Dict[str, Any]:
-    print(f"Starting Fold {fold + 1}/{k_folds}")
+    if verbosity == 2:
+        print(f"Starting Fold {fold + 1}/{k_folds}")
 
     # Split data into training and validation sets
     train_features, val_features = features_tensor[train_idx], features_tensor[val_idx]
@@ -198,9 +206,10 @@ def train_fold(
         if val_loss > prev_val_loss:
             patience -= 1
             if patience <= 0:
-                print(
-                    f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss."
-                )
+                if verbosity == 2:
+                    print(
+                        f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss."
+                    )
                 break
         else:
             patience = original_patience
@@ -227,7 +236,7 @@ class Individual:
         if not self.genome:
             self.genome = {
                 constants.LAYER_SIZES: [64, 32],
-                constants.EPOCHS: 2000,
+                constants.EPOCHS: 200,
                 constants.PATIENCE: 10,
                 constants.ADAM_LR: 0.001,
                 constants.REGULARIZATION_LAMBDA: 0.05,
@@ -270,7 +279,11 @@ class Individual:
                 fold_results.append(result[constants.VAL_LOSS])
                 fold_train_results.append(result[constants.TRAIN_LOSS])
                 self.state_dicts.append(result[constants.MODEL].state_dict())
-        self.fitness = np.mean(fold_results)
+        self.fitness = np.mean(fold_results) - self.get_complexity_penalty()
+
+    def get_complexity_penalty(self):
+        # Regularization penalty to discourage complexity with only small performance improvements
+        return 0.0
 
     def predict(self, features_tensor: torch.tensor) -> np.ndarray:
         predictions = []
@@ -297,6 +310,86 @@ class Individual:
             f"Average Validation Loss: {self.fitness:.4f}"
         )
 
+    def mutate(self) -> "Individual":
+        mut = deepcopy(self.genome)
+        if random.random() < mutation_rate:
+            i = random.randint(0, len(mut[constants.LAYER_SIZES]) - 1)
+            if random.random() < 0.5:
+                mut[constants.LAYER_SIZES][i] *= 2  # Double the size of a layer
+            else:
+                mut[constants.LAYER_SIZES][i] = max(
+                    1, mut[constants.LAYER_SIZES][i] // 2
+                )  # Halve the size of a layer, minimum 1
+
+        if random.random() < mutation_rate:
+            if random.random() < 0.5:
+                if random.random() < 0.5:  # Add copy of last layer
+                    mut[constants.LAYER_SIZES].append(mut[constants.LAYER_SIZES][-1])
+                else:  # Add copy of 1st layer
+                    mut[constants.LAYER_SIZES] = [mut[constants.LAYER_SIZES][0]] + mut[
+                        constants.LAYER_SIZES
+                    ]
+            elif mut[constants.LAYER_SIZES]:
+                if random.random() < 0.5:  # Remove last layer
+                    mut[constants.LAYER_SIZES].pop()
+                else:  # Remove 1st layer
+                    mut[constants.LAYER_SIZES].pop(0)
+
+        for key in [
+            constants.ADAM_LR,
+            constants.REGULARIZATION_LAMBDA,
+        ]:  # Mutate float hyperparameters
+            if random.random() < mutation_rate:
+                if random.random() < 0.5:
+                    mut[key] *= 2
+                else:
+                    mut[key] = max(0.0001, mut[key] / 2)
+
+        for key in [
+            constants.EPOCHS,
+            constants.PATIENCE,
+        ]:  # Mutate integer hyperparameters
+            if random.random() < mutation_rate:
+                if random.random() < 0.5:
+                    mut[key] = round(mut[key] * 1.1)
+                else:
+                    mut[key] = max(1, round(mut[key] * 0.9))
+
+        return Individual(mut)
+
+    def recombine(self, other: "Individual") -> List["Individual"]:
+        if random.random() < recombination_rate:
+            rec1, rec2 = {}, {}
+            for key in self.genome.keys():
+                if random.random() < 0.5:
+                    parent1, parent2 = self, other
+                else:
+                    parent1, parent2 = other, self
+                rec1[key] = parent1.genome[key]
+                rec2[key] = parent2.genome[key]
+            return [Individual(rec1), Individual(rec2)]
+        else:
+            return [self, other]
+
+
+def evaluate_population(
+    population: List[Individual], kf: KFold, verbosity: int = 1
+) -> List[Individual]:
+    """
+    Description: Evaluates the population of individuals using K-Fold Cross Validation
+    """
+    for i, individual in enumerate(population):
+        individual.evaluate(kf)
+        if verbosity == 2:
+            print(f"Evaluated individual {i + 1}: \n\n{individual}")
+        elif verbosity == 1:
+            print(f"Evaluated individual {i + 1} with fitness {individual.fitness:.4f}")
+    return population
+
+
+def sort_population(population: List[Individual]) -> List[Individual]:
+    return sorted(population, key=lambda x: x.fitness)
+
 
 # %%
 # Train the neural networks
@@ -309,20 +402,91 @@ torch.cuda.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-# K-Fold Cross Validation
-k_folds = 5
-kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+k_folds = 2
+mutation_rate = 0.3
+recombination_rate = 0.3
+population_size = 10
 
+kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)  # K-Fold Cross Validation
+scaler = MinMaxScaler(feature_range=(0, 1))  # Scale fitness weights from 0 to 1
 default_individual = Individual(genome=None)
 default_individual.evaluate(kf)
+print(f"Default individual: \n\n{default_individual}")
+
+population_size = 10
+population = [
+    Individual(
+        genome={
+            constants.LAYER_SIZES: [random.choice([8, 16, 32, 64])]
+            * random.randint(1, 4),
+            constants.EPOCHS: random.randint(50, 200),
+            constants.PATIENCE: random.randint(5, 20),
+            constants.ADAM_LR: random.uniform(0.0001, 0.05),
+            constants.REGULARIZATION_LAMBDA: random.uniform(0.0001, 0.2),
+        }
+    )
+    for _ in range(population_size)
+]
+population = evaluate_population(population, kf)
+best_individual = sort_population(population)[0]
+print(f"0 generation best individual: \n\n {population[0]}")
+print()
+
+for generation in range(5):
+    children = []
+    weights = scaler.fit_transform(
+        np.array([1 / individual.fitness for individual in population]).reshape(-1, 1)
+    ).flatten()
+    # 1 / fitness is greater for lower fitness (error) values, then normalize to 0-1
+    # Recombine into the next generation, randomly basing children on parents, with lower error individuals having a higher chance of being selected
+    for i in range(population_size // 2):
+        parent1, parent2 = random.choices(population, weights=weights, k=2)
+        children += parent1.recombine(parent2)
+
+    # Randomly change each child's genome
+    children = [child.mutate() for child in children]
+
+    # Calculate fitness values for each child
+    children = evaluate_population(children, kf)
+
+    # Sort population, such that the first set of individuals have the best fitness
+    population = sort_population(population + children)
+    population = population[
+        :population_size
+    ]  # Keep only the best half of the population
+    if best_individual != population[0]:
+        best_individual = population[0]
+        print(f"{generation + 1} generation best individual: \n\n {population[0]}")
+    else:
+        print(f"{generation + 1} generation same best individual")
+    print()
 
 # %%
 # Identify best individual
-best_individual = default_individual
-print(f"Best individual: \n\n{best_individual}")
+print(f"Best individual ({k_folds} folds): \n\n{best_individual}")
+
+# Best individual will preserve its genome but re-evaluate to get new models and a new validation loss
+# Compare with re-evaluated default individual with manually set hyperparameters
+
+prediction_k_folds = 5
+prediction_kf = KFold(
+    n_splits=k_folds, shuffle=True, random_state=seed
+)  # Once best hyperparameter found, use more folds for final evaluation
+best_individual.genome[constants.EPOCHS] *= 10  # Retrain with more epochs
+best_individual.evaluate(prediction_kf)
+
+print(
+    f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n\n{best_individual}"
+)
+
+default_individual.genome[constants.EPOCHS] *= 10
+default_individual.evaluate(prediction_kf)
+print(
+    f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n\n{default_individual}"
+)
 
 # Evaluate on full dataset
-predictions = default_individual.predict(full_features_tensor)
+predictions = best_individual.predict(full_features_tensor)
 
 # %%
 # Save best results
