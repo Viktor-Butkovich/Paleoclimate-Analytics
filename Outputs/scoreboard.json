@@ -1,0 +1,6 @@
+{
+    "linear_model": 3.6178,
+    "lagged_linear_model": 3.5557,
+    "genetic_torch_model": 2.77108,
+    "torch_model": 2.93739
+}

@@ -233,4 +233,8 @@ preprocessed.write_csv(
     "../Outputs/long_term_global_anomaly_view.csv"
 )  # Only contains original columns
 
+# Create an empty JSON file for the MSE scoreboard
+with open("../Outputs/scoreboard.json", "w") as f:
+    json.dump({}, f)
+
 # %%

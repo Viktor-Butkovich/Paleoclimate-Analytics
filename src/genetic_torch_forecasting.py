@@ -302,12 +302,12 @@ class Individual:
             map(str, [input_size] + self.genome[constants.LAYER_SIZES] + [1])
         )
         hyperparameters = "\n".join(
-            f"    {key}: {value}" for key, value in self.genome.items()
+            f"        {key}: {value}" for key, value in self.genome.items()
         )
         return (
-            f"Layer Configuration: {layer_config}\n"
-            f"Hyperparameters:\n{hyperparameters}\n"
-            f"Average Validation Loss: {self.fitness:.4f}"
+            f"    Layer Configuration: {layer_config}\n"
+            f"    Hyperparameters:\n{hyperparameters}\n"
+            f"    Average Validation Loss: {self.fitness:.4f}"
         )
 
     def mutate(self) -> "Individual":
@@ -343,7 +343,9 @@ class Individual:
                 if random.random() < 0.5:
                     mut[key] *= 2
                 else:
-                    mut[key] = max(0.0001, mut[key] / 2)
+                    mut[key] = round(
+                        max(0.0001, mut[key] / 2), config["anomaly_decimal_places"]
+                    )
 
         for key in [
             constants.EPOCHS,
@@ -406,14 +408,14 @@ k_folds = 2
 mutation_rate = 0.3
 recombination_rate = 0.3
 population_size = 10
+num_generations = 10
 
 kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)  # K-Fold Cross Validation
 scaler = MinMaxScaler(feature_range=(0, 1))  # Scale fitness weights from 0 to 1
 default_individual = Individual(genome=None)
 default_individual.evaluate(kf)
-print(f"Default individual: \n\n{default_individual}")
+print(f"Default individual: \n{default_individual}")
 
-population_size = 10
 population = [
     Individual(
         genome={
@@ -432,7 +434,7 @@ best_individual = sort_population(population)[0]
 print(f"0 generation best individual: \n\n {population[0]}")
 print()
 
-for generation in range(5):
+for generation in range(num_generations):
     children = []
     weights = scaler.fit_transform(
         np.array([1 / individual.fitness for individual in population]).reshape(-1, 1)
@@ -456,34 +458,37 @@ for generation in range(5):
     ]  # Keep only the best half of the population
     if best_individual != population[0]:
         best_individual = population[0]
-        print(f"{generation + 1} generation best individual: \n\n {population[0]}")
+        print(f"{generation + 1} generation best individual: \n{population[0]}")
     else:
         print(f"{generation + 1} generation same best individual")
     print()
 
 # %%
 # Identify best individual
-print(f"Best individual ({k_folds} folds): \n\n{best_individual}")
+print(f"Best individual after evolution ({k_folds} folds): \n{best_individual}")
+print()
 
 # Best individual will preserve its genome but re-evaluate to get new models and a new validation loss
 # Compare with re-evaluated default individual with manually set hyperparameters
 
-prediction_k_folds = 5
-prediction_kf = KFold(
-    n_splits=k_folds, shuffle=True, random_state=seed
-)  # Once best hyperparameter found, use more folds for final evaluation
-best_individual.genome[constants.EPOCHS] *= 10  # Retrain with more epochs
+prediction_k_folds = 2  # (Optionally) retrain with more folds for final evaluation
+prediction_kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+best_individual.genome[
+    constants.EPOCHS
+] *= 1  # (Optionally) retrain with more epochs for final evaluation
 best_individual.evaluate(prediction_kf)
 
 print(
-    f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n\n{best_individual}"
+    f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n{best_individual}"
 )
+print()
 
 default_individual.genome[constants.EPOCHS] *= 10
 default_individual.evaluate(prediction_kf)
 print(
-    f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n\n{default_individual}"
+    f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n{default_individual}"
 )
+print()
 
 # Evaluate on full dataset
 predictions = best_individual.predict(full_features_tensor)
@@ -502,8 +507,48 @@ pred_df = (
 )
 pred_df.write_csv("../Outputs/genetic_torch_model_predictions.csv")
 
+default_pred_df = (
+    full_df.with_columns(pl.Series("pred_anomaly", predictions))
+    .select("year_bin", "anomaly", "pred_anomaly")
+    .with_columns(
+        pl.col("anomaly").round(config["anomaly_decimal_places"]),
+        pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
+    )
+)
+default_pred_df.write_csv("../Outputs/torch_model_predictions.csv")
+
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
 print("Saved predictions to csv")
+
+# %%
+# Update scoreboard.json with the best individual's fitness
+scoreboard_path = "../Outputs/scoreboard.json"
+
+# Load the existing scoreboard
+with open(scoreboard_path, "r") as f:
+    scoreboard = json.load(f)
+
+# Update the "genetic_torch_model" entry
+scoreboard["genetic_torch_model"] = round(
+    best_individual.fitness, config["anomaly_decimal_places"]
+)
+
+# Save the updated scoreboard
+with open(scoreboard_path, "w") as f:
+    json.dump(scoreboard, f, indent=4)
+
+print(
+    f"Updated {scoreboard_path} with genetic_torch_model fitness: {best_individual.fitness:.5f}"
+)
+
+scoreboard["torch_model"] = round(
+    default_individual.fitness, config["anomaly_decimal_places"]
+)
+with open(scoreboard_path, "w") as f:
+    json.dump(scoreboard, f, indent=4)
+print(
+    f"Updated {scoreboard_path} with torch_model fitness: {default_individual.fitness:.5f}"
+)
 
 # %%

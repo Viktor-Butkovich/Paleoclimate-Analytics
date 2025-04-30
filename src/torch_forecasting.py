@@ -1,3 +1,5 @@
+# Deprecated
+
 # %%
 # Imports
 import time
@@ -12,10 +14,16 @@ from sklearn.model_selection import KFold
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import json
+import os
 
 # %%
 # Load the dataset
 config = json.load(open("../prediction_config.json"))
+
+# Ensure the cached_models directory exists
+cached_models_dir = "../cached_models"
+if not os.path.exists(cached_models_dir):
+    os.makedirs(cached_models_dir)
 
 device = None
 if config["gpu"] and torch.cuda.is_available():
@@ -175,7 +183,7 @@ def train_fold(fold, train_idx, val_idx):
     print(f"Training Loss for Fold {fold + 1}: {train_loss:.4f}")
     print(f"Validation Loss for Fold {fold + 1}: {val_loss:.4f}")
 
-    torch.save(model.state_dict(), f"../cached_models/model_fold_{fold + 1}.pth")
+    torch.save(model.state_dict(), f"{cached_models_dir}/model_fold_{fold + 1}.pth")
     return val_loss
 
 
@@ -222,7 +230,7 @@ full_features_tensor = torch.tensor(full_features, dtype=torch.float32).to(devic
 all_predictions = []
 for fold in range(k_folds):
     model = AnomalyPredictor(input_size, device)
-    model.load_state_dict(torch.load(f"../cached_models/model_fold_{fold + 1}.pth"))
+    model.load_state_dict(torch.load(f"{cached_models_dir}/model_fold_{fold + 1}.pth"))
     fold_predictions = evaluate_predictions(model, full_features_tensor)
     all_predictions.append(fold_predictions)
 
@@ -243,5 +251,22 @@ pred_df.write_csv("../Outputs/torch_model_predictions.csv")
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
 print("Saved predictions to csv")
+
+# %%
+# Update scoreboard.json with the MSE
+scoreboard_path = "../Outputs/scoreboard.json"
+
+# Load the existing scoreboard
+with open(scoreboard_path, "r") as f:
+    scoreboard = json.load(f)
+
+# Update the "torch_model" entry
+scoreboard["torch_model"] = round(avg_val_loss, config["anomaly_decimal_places"])
+
+# Save the updated scoreboard
+with open(scoreboard_path, "w") as f:
+    json.dump(scoreboard, f, indent=4)
+
+print(f"Updated {scoreboard_path} with genetic_torch_model fitness: {avg_val_loss:.4f}")
 
 # %%

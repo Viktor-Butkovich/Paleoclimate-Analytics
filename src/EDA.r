@@ -1,9 +1,13 @@
-library(tidyverse)
-library(reshape2)
-library(scales)
-library(patchwork)
+suppressPackageStartupMessages({
+    library(tidyverse)
+    library(reshape2)
+    library(scales)
+    library(patchwork)
+    library(here)
+})
+options(warn = -1) # Suppress warnings
 
-anomaly_df <- read.csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view_enriched_training.csv")) %>% filter(year_bin <= 2025)
 print(head(anomaly_df, 1))
 get_year_bin_plot <- function() {
     plot <- ggplot(anomaly_df, aes(x = year_bin, x = anomaly)) +
@@ -84,7 +88,7 @@ get_solar_modulation_plot <- function() {
 }
 
 get_custom_plot <- function() {
-    plot <- ggplot(anomaly_df, aes(y = anomaly, x = eccentricity * delta_solar_modulation)) +
+    plot <- ggplot(anomaly_df, aes(y = anomaly, x = eccentricity)) +
         geom_point() +
         geom_smooth(method = "lm", se = FALSE) +
         theme_classic()
@@ -135,4 +139,4 @@ if (results_window) {
     print(plot)
 }
 
-ggsave("../Outputs/EDA_plot.png", width = 10, height = 6)
+ggsave(here("Outputs", "EDA_plot.png"), width = 10, height = 6)

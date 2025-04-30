@@ -3,13 +3,17 @@ suppressPackageStartupMessages({
     library(reshape2)
     library(scales)
     library(patchwork)
+    library(jsonlite)
+    library(here)
 })
 options(warn = -1) # Suppress warnings
+config <- fromJSON(here("prediction_config.json"))
+scoreboard <- fromJSON(here("Outputs", "scoreboard.json"))
 
-anomaly_df <- read.csv("../Outputs/long_term_global_anomaly_view.csv") %>% filter(year_bin <= 2025)
+anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view.csv")) %>% filter(year_bin <= 2025)
 # Preprocessed, normalized, missing values interpolated, etc. with constant frequency
 
-anomaly_df_raw <- read.csv("../Outputs/raw_global_anomaly_view.csv") %>% filter(year_bin <= 2025 & year_bin >= -700000)
+anomaly_df_raw <- read.csv(here("Outputs", "raw_global_anomaly_view.csv")) %>% filter(year_bin <= 2025 & year_bin >= -700000)
 # Raw data, good for actual attribute values and high-frequency time periods (recent)
 
 ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -25,7 +29,7 @@ ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly
     theme_classic() +
     scale_y_continuous(limits = c(-10, 10)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("../Outputs/long_term_temperature_anomaly.png", width = 10, height = 6)
+ggsave(here("Outputs", "long_term_temperature_anomaly.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -38,7 +42,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("../Outputs/long_term_co2_ppm.png", width = 10, height = 6)
+ggsave(here("Outputs", "long_term_co2_ppm.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = anomaly, color = anomaly)) +
     geom_line() +
@@ -54,7 +58,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = anom
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-3, 3))
-ggsave("../Outputs/since_ice_age_temperature_anomaly.png", width = 10, height = 6)
+ggsave(here("Outputs", "since_ice_age_temperature_anomaly.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -69,7 +73,7 @@ ggplot(anomaly_df_raw %>% filter(year_bin >= -12000), aes(x = year_bin, y = co2_
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(labels = scales::comma)
-ggsave("../Outputs/since_ice_age_co2_ppm.png", width = 10, height = 6)
+ggsave(here("Outputs", "since_ice_age_co2_ppm.png"), width = 10, height = 6)
 
 latest_anomaly <- tail(anomaly_df_raw$anomaly, 1)
 ggplot(anomaly_df_raw, aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -83,7 +87,7 @@ ggplot(anomaly_df_raw, aes(x = year_bin, y = anomaly, color = anomaly)) +
     theme_classic() +
     scale_y_continuous(limits = c(-2, 2)) +
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
-ggsave("../Outputs/modern_temperature_anomaly.png", width = 10, height = 6)
+ggsave(here("Outputs", "modern_temperature_anomaly.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -94,7 +98,7 @@ ggplot(anomaly_df_raw, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     theme_classic() +
     scale_y_continuous(limits = c(175, 450)) +
     scale_x_continuous(limits = c(1850, 2025), labels = scales::comma)
-ggsave("../Outputs/modern_co2_ppm.png", width = 10, height = 6)
+ggsave(here("Outputs", "modern_co2_ppm.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
     year_bin < 1850 ~ 0,
@@ -105,7 +109,7 @@ ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
     geom_smooth(formula = y ~ x, method = "lm", se = FALSE) +
     theme_classic() +
     scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
-ggsave("../Outputs/anomaly_vs_co2_ppm.png", width = 10, height = 6)
+ggsave(here("Outputs", "anomaly_vs_co2_ppm.png"), width = 10, height = 6)
 
 group_size <- 1
 glaciation_orbit_df <- anomaly_df_raw %>%
@@ -155,7 +159,7 @@ anomaly_insolation_plot <- ggplot(glaciation_orbit_df, aes(x = global_insolation
     theme_classic()
 combined_plot <- glaciation_orbit_plot / (anomaly_orbit_plot | anomaly_insolation_plot)
 combined_plot
-ggsave("../Outputs/orbital_parameters_glacial_cycles_trends.png", width = 15, height = 9)
+ggsave(here("Outputs", "orbital_parameters_glacial_cycles_trends.png"), width = 15, height = 9)
 
 solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     geom_line(aes(y = rescale(solar_modulation), color = "Solar Modulation (Φ)"), linewidth = 1.2) +
@@ -177,17 +181,20 @@ solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     ggtitle("Solar Modulation and Temperature Anomaly with Ice Age Overlays")
 
 solar_modulation_plot
-ggsave("../Outputs/long_term_solar_modulation_plot.png", solar_modulation_plot, width = 12, height = 6)
+ggsave(here("Outputs", "long_term_solar_modulation_plot.png"), solar_modulation_plot, width = 12, height = 6)
 
-plot_predictions <- function(data, file_path) {
-    present_line <- 2025 # Include these in a shared configuration file rather than hardcoding
+plot_predictions <- function(prediction_type) {
+    file_path_base <- here("Outputs", paste(prediction_type, "_predictions", sep = ""))
+    data <- read.csv(here(paste(file_path_base, ".csv", sep = "")))
+
+    present_line <- config$present # Include these in a shared configuration file rather than hardcoding
     prediction_line <- 200000
     train1_bounds <- c(min(data$year_bin), -500000)
     test_bounds <- c(-500000, -300000)
     train2_bounds <- c(-300000, present_line)
     forecast_bounds <- c(present_line, prediction_line)
     data <- data %>% mutate(anomaly = ifelse(year_bin > present_line, NA, anomaly)) # Set future anomalies to null for plotting
-    if (grepl("arima", file_path)) {
+    if (grepl("arima", file_path_base)) {
         data <- data %>% mutate(pred_anomaly = ifelse(year_bin > present_line, pred_anomaly, NA)) # Set past anomalies to null for plotting - trivial predictions
         test_split_layers <- list(
             annotate("text", x = mean(c(train1_bounds[1], train2_bounds[2])), y = -10, label = "Train", hjust = 0.5, color = "black")
@@ -197,7 +204,8 @@ plot_predictions <- function(data, file_path) {
             annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey"),
             annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black"),
             annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
-            annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black")
+            annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
+            labs(caption = paste("Validation MSE: ", scoreboard[[prediction_type]], sep = ""))
         )
     }
     ggplot(data, aes(x = year_bin)) +
@@ -207,7 +215,7 @@ plot_predictions <- function(data, file_path) {
             x = "Year",
             y = "Anomaly (°C)",
             color = "Legend",
-            title = "Actual and Predicted Climate Anomaly by Year"
+            title = paste(str_to_title(str_replace_all(prediction_type, "_", " ")), " Predictions - Actual and Predicted Climate Anomaly by Year", sep = "")
         ) +
         theme_classic() +
         scale_y_continuous(limits = c(-10, 4), breaks = seq(-10, 4, by = 2)) +
@@ -219,19 +227,19 @@ plot_predictions <- function(data, file_path) {
         test_split_layers +
         geom_vline(xintercept = present_line, linetype = "dotted", color = "blue") +
         annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black")
-    ggsave(paste("../Outputs/", file_path, ".png", sep = ""), width = 10, height = 6)
+    ggsave(here("Outputs", paste(prediction_type, "_predictions.png", sep = "")), width = 10, height = 6)
 }
 
 
 for (prediction_type in c(
-    "linear_model_predictions",
-    "linear_model_predictions_lagged",
-    "torch_model_predictions",
-    "genetic_torch_model_predictions",
-    "arima_model_predictions",
-    "arimax_model_predictions"
+    "linear_model",
+    "lagged_linear_model",
+    "torch_model",
+    "genetic_torch_model",
+    "arima_model",
+    "arimax_model"
 )) {
-    plot_predictions(read.csv(paste("../Outputs/", prediction_type, ".csv", sep = "")), prediction_type)
+    plot_predictions(prediction_type)
 }
 
 print("Plots saved successfully")
