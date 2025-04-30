@@ -1,5 +1,3 @@
-# Deprecated
-
 # %%
 # Imports
 import time
@@ -18,6 +16,10 @@ import os
 
 # %%
 # Load the dataset
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+seed = 42
+
 config = json.load(open("../prediction_config.json"))
 
 # Ensure the cached_models directory exists
@@ -187,19 +189,19 @@ def train_fold(fold, train_idx, val_idx):
     return val_loss
 
 
+def restart_random_state() -> None:
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
+
 # %%
 # Train the neural networks
 
-# Set random seeds
-seed = 42
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+restart_random_state()
 
 # K-Fold Cross Validation
-k_folds = 5
+k_folds = 10
 regularization_lambda = 0.05  # L2 (ridge) regularization parameter
 kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
@@ -267,6 +269,6 @@ scoreboard["torch_model"] = round(avg_val_loss, config["anomaly_decimal_places"]
 with open(scoreboard_path, "w") as f:
     json.dump(scoreboard, f, indent=4)
 
-print(f"Updated {scoreboard_path} with genetic_torch_model fitness: {avg_val_loss:.4f}")
+print(f"Updated {scoreboard_path} with torch_model fitness: {avg_val_loss:.5f}")
 
 # %%

@@ -3,6 +3,7 @@
 import polars as pl
 from sklearn.preprocessing import StandardScaler
 import json
+import os
 
 config = json.load(open("../prediction_config.json"))
 if config["db_mode"] == "sql_server":
@@ -234,7 +235,9 @@ preprocessed.write_csv(
 )  # Only contains original columns
 
 # Create an empty JSON file for the MSE scoreboard
-with open("../Outputs/scoreboard.json", "w") as f:
-    json.dump({}, f)
+scoreboard_path = "../Outputs/scoreboard.json"
+if not os.path.exists(scoreboard_path):
+    with open(scoreboard_path, "w") as f:
+        json.dump({}, f)
 
 # %%

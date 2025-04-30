@@ -17,9 +17,14 @@ from modules import constants
 from typing import Dict, List, Any
 import numpy as np
 import json
+import os
 
 # %%
 # Load the dataset
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+seed = 42
+
 config = json.load(open("../prediction_config.json"))
 
 device = None
@@ -230,6 +235,32 @@ def train_fold(
     }
 
 
+def restart_random_state() -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
+
+def save_random_state() -> Dict[str, Any]:
+    return {
+        "random_state": random.getstate(),
+        "np_random_state": np.random.get_state(),
+        "torch_random_state": torch.get_rng_state(),
+        "torch_cuda_random_state": (
+            torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+        ),
+    }
+
+
+def restore_random_state(saved_random_state: Dict[str, Any]) -> None:
+    random.setstate(saved_random_state["random_state"])
+    np.random.set_state(saved_random_state["np_random_state"])
+    torch.set_rng_state(saved_random_state["torch_random_state"])
+    if torch.cuda.is_available():
+        torch.cuda.set_rng_state(saved_random_state["torch_cuda_random_state"])
+
+
 class Individual:
     def __init__(self, genome: Dict[str, Any]) -> None:
         self.genome = genome
@@ -245,41 +276,48 @@ class Individual:
         self.state_dicts: List[Dict[str, Any]] = []
 
     def evaluate(self, kf: KFold) -> None:
-        self.state_dicts = []
-        if config["parallel"]:
-            with ThreadPoolExecutor() as executor:
-                futures = [
-                    executor.submit(
-                        train_fold,
-                        fold,
-                        train_idx,
-                        val_idx,
-                        hyperparameters=self.genome,
+        # Save the current random state
+        saved_random_state = save_random_state()
+        restart_random_state()  # A particular genome should always have a deterministic result
+        if self.fitness is None:  # No need to re-evaluate
+            self.state_dicts = []
+            if config["parallel"]:
+                with ThreadPoolExecutor() as executor:
+                    futures = [
+                        executor.submit(
+                            train_fold,
+                            fold,
+                            train_idx,
+                            val_idx,
+                            hyperparameters=self.genome,
+                        )
+                        for fold, (train_idx, val_idx) in enumerate(
+                            kf.split(features_tensor)
+                        )
+                    ]
+                    fold_results = [
+                        future.result()[constants.VAL_LOSS] for future in futures
+                    ]
+                    fold_train_results = [
+                        future.result()[constants.TRAIN_LOSS] for future in futures
+                    ]
+                    self.state_dicts = [
+                        future.result()[constants.MODEL].state_dict()
+                        for future in futures
+                    ]
+            else:
+                fold_results = []
+                fold_train_results = []
+                for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
+                    result = train_fold(
+                        fold, train_idx, val_idx, hyperparameters=self.genome
                     )
-                    for fold, (train_idx, val_idx) in enumerate(
-                        kf.split(features_tensor)
-                    )
-                ]
-                fold_results = [
-                    future.result()[constants.VAL_LOSS] for future in futures
-                ]
-                fold_train_results = [
-                    future.result()[constants.TRAIN_LOSS] for future in futures
-                ]
-                self.state_dicts = [
-                    future.result()[constants.MODEL].state_dict() for future in futures
-                ]
-        else:
-            fold_results = []
-            fold_train_results = []
-            for fold, (train_idx, val_idx) in enumerate(kf.split(features_tensor)):
-                result = train_fold(
-                    fold, train_idx, val_idx, hyperparameters=self.genome
-                )
-                fold_results.append(result[constants.VAL_LOSS])
-                fold_train_results.append(result[constants.TRAIN_LOSS])
-                self.state_dicts.append(result[constants.MODEL].state_dict())
-        self.fitness = np.mean(fold_results) - self.get_complexity_penalty()
+                    fold_results.append(result[constants.VAL_LOSS])
+                    fold_train_results.append(result[constants.TRAIN_LOSS])
+                    self.state_dicts.append(result[constants.MODEL].state_dict())
+            self.fitness = np.mean(fold_results) - self.get_complexity_penalty()
+        # Reset the random state at the end to avoid side effects
+        restore_random_state(saved_random_state)
 
     def get_complexity_penalty(self):
         # Regularization penalty to discourage complexity with only small performance improvements
@@ -312,7 +350,9 @@ class Individual:
 
     def mutate(self) -> "Individual":
         mut = deepcopy(self.genome)
+        mutated = False
         if random.random() < mutation_rate:
+            mutated = True
             i = random.randint(0, len(mut[constants.LAYER_SIZES]) - 1)
             if random.random() < 0.5:
                 mut[constants.LAYER_SIZES][i] *= 2  # Double the size of a layer
@@ -322,6 +362,7 @@ class Individual:
                 )  # Halve the size of a layer, minimum 1
 
         if random.random() < mutation_rate:
+            mutated = True
             if random.random() < 0.5:
                 if random.random() < 0.5:  # Add copy of last layer
                     mut[constants.LAYER_SIZES].append(mut[constants.LAYER_SIZES][-1])
@@ -340,8 +381,9 @@ class Individual:
             constants.REGULARIZATION_LAMBDA,
         ]:  # Mutate float hyperparameters
             if random.random() < mutation_rate:
+                mutated = True
                 if random.random() < 0.5:
-                    mut[key] *= 2
+                    mut[key] = round(mut[key] * 2, config["anomaly_decimal_places"])
                 else:
                     mut[key] = round(
                         max(0.0001, mut[key] / 2), config["anomaly_decimal_places"]
@@ -352,12 +394,17 @@ class Individual:
             constants.PATIENCE,
         ]:  # Mutate integer hyperparameters
             if random.random() < mutation_rate:
+                mutated = True
                 if random.random() < 0.5:
                     mut[key] = round(mut[key] * 1.1)
                 else:
                     mut[key] = max(1, round(mut[key] * 0.9))
 
-        return Individual(mut)
+        if mutated:
+            child = Individual(mut)
+        else:
+            child = self
+        return child
 
     def recombine(self, other: "Individual") -> List["Individual"]:
         if random.random() < recombination_rate:
@@ -372,6 +419,13 @@ class Individual:
             return [Individual(rec1), Individual(rec2)]
         else:
             return [self, other]
+
+    def to_log(self, generation: int) -> Dict[str, Any]:
+        return {
+            "generation": generation,
+            "fitness": self.fitness,
+            "description": str(self),
+        }
 
 
 def evaluate_population(
@@ -396,22 +450,16 @@ def sort_population(population: List[Individual]) -> List[Individual]:
 # %%
 # Train the neural networks
 
-# Set random seeds
-seed = 42
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
 k_folds = 2
-mutation_rate = 0.3
-recombination_rate = 0.3
-population_size = 10
-num_generations = 10
+mutation_rate = 0.5
+recombination_rate = 0.5
+population_size = 20
+num_generations = 20
 
+restart_random_state()
 kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)  # K-Fold Cross Validation
 scaler = MinMaxScaler(feature_range=(0, 1))  # Scale fitness weights from 0 to 1
+
 default_individual = Individual(genome=None)
 default_individual.evaluate(kf)
 print(f"Default individual: \n{default_individual}")
@@ -423,18 +471,24 @@ population = [
             * random.randint(1, 4),
             constants.EPOCHS: random.randint(50, 200),
             constants.PATIENCE: random.randint(5, 20),
-            constants.ADAM_LR: random.uniform(0.0001, 0.05),
-            constants.REGULARIZATION_LAMBDA: random.uniform(0.0001, 0.2),
+            constants.ADAM_LR: round(
+                random.uniform(0.0001, 0.05), config["anomaly_decimal_places"]
+            ),
+            constants.REGULARIZATION_LAMBDA: round(
+                random.uniform(0.0001, 0.2), config["anomaly_decimal_places"]
+            ),
         }
     )
     for _ in range(population_size)
 ]
+print(f"Generation 0: Evaluating {population_size} initial individuals")
 population = evaluate_population(population, kf)
 best_individual = sort_population(population)[0]
-print(f"0 generation best individual: \n\n {population[0]}")
+print(f"0 generation best individual: \n\n {best_individual}")
 print()
 
 for generation in range(num_generations):
+    print(f"Generation {generation + 1}: Evaluating {population_size} new individuals")
     children = []
     weights = scaler.fit_transform(
         np.array([1 / individual.fitness for individual in population]).reshape(-1, 1)
@@ -458,9 +512,9 @@ for generation in range(num_generations):
     ]  # Keep only the best half of the population
     if best_individual != population[0]:
         best_individual = population[0]
-        print(f"{generation + 1} generation best individual: \n{population[0]}")
+        print(f"Generation {generation + 1} best individual: \n{population[0]}")
     else:
-        print(f"{generation + 1} generation same best individual")
+        print(f"Generation {generation + 1} has the same best individual")
     print()
 
 # %%
@@ -471,27 +525,30 @@ print()
 # Best individual will preserve its genome but re-evaluate to get new models and a new validation loss
 # Compare with re-evaluated default individual with manually set hyperparameters
 
-prediction_k_folds = 2  # (Optionally) retrain with more folds for final evaluation
-prediction_kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
-best_individual.genome[
+prediction_k_folds = 10  # (Optionally) retrain with more folds for final evaluation
+prediction_kf = KFold(n_splits=prediction_k_folds, shuffle=True, random_state=seed)
+
+retrained_best_individual = Individual(genome=deepcopy(best_individual.genome))
+retrained_best_individual.genome[
     constants.EPOCHS
-] *= 1  # (Optionally) retrain with more epochs for final evaluation
-best_individual.evaluate(prediction_kf)
+] *= 10  # (Optionally) retrain with more epochs for final evaluation
+retrained_best_individual.evaluate(prediction_kf)
 
 print(
-    f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n{best_individual}"
+    f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n{retrained_best_individual}"
 )
 print()
 
-default_individual.genome[constants.EPOCHS] *= 10
-default_individual.evaluate(prediction_kf)
+retrained_default_individual = Individual(genome=deepcopy(default_individual.genome))
+retrained_default_individual.genome[constants.EPOCHS] *= 10
+retrained_default_individual.evaluate(prediction_kf)
 print(
-    f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n{default_individual}"
+    f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n{retrained_default_individual}"
 )
 print()
 
 # Evaluate on full dataset
-predictions = best_individual.predict(full_features_tensor)
+predictions = retrained_best_individual.predict(full_features_tensor)
 
 # %%
 # Save best results
@@ -531,7 +588,7 @@ with open(scoreboard_path, "r") as f:
 
 # Update the "genetic_torch_model" entry
 scoreboard["genetic_torch_model"] = round(
-    best_individual.fitness, config["anomaly_decimal_places"]
+    retrained_best_individual.fitness, config["anomaly_decimal_places"]
 )
 
 # Save the updated scoreboard
@@ -539,16 +596,7 @@ with open(scoreboard_path, "w") as f:
     json.dump(scoreboard, f, indent=4)
 
 print(
-    f"Updated {scoreboard_path} with genetic_torch_model fitness: {best_individual.fitness:.5f}"
-)
-
-scoreboard["torch_model"] = round(
-    default_individual.fitness, config["anomaly_decimal_places"]
-)
-with open(scoreboard_path, "w") as f:
-    json.dump(scoreboard, f, indent=4)
-print(
-    f"Updated {scoreboard_path} with torch_model fitness: {default_individual.fitness:.5f}"
+    f"Updated {scoreboard_path} with genetic_torch_model fitness: {retrained_best_individual.fitness:.5f}"
 )
 
 # %%
