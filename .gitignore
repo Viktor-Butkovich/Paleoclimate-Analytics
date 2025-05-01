@@ -164,7 +164,9 @@ cython_debug/
 *.pkl
 *.pbix
 *.pdf
-Data/*
+raw_data*
+precomputed_modern_temperature.csv
+Land_and_Ocean_LatLong1.nc
 evolution_progress/*
 lightning_logs/*
 cached_models/*

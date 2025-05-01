@@ -1,5 +1,6 @@
 import netCDF4 as nc
 import numpy as np
+import urllib.request
 import warnings
 import os
 
@@ -7,8 +8,23 @@ warnings.filterwarnings("ignore", category=UserWarning)
 if os.getcwd().endswith(
     "modules"
 ):  # If running directly from modules, go to directory containing Data
-    os.chdir("../..")
-modern_temperature_grid = nc.Dataset("../Data/Land_and_Ocean_LatLong1.nc", mode="r")
+    os.chdir("..")
+
+file_path = "../Data/Land_and_Ocean_LatLong1.nc"
+
+if not os.path.exists(file_path):
+    # source: https://berkeleyearth.org/data/ - 1 x 1 Latitude-Longitude Grid (~400 MB), Average Temperature with Air Temperatures at Sea Ice
+    # https://berkeley-earth-temperature.s3.us-west-1.amazonaws.com/Global/Gridded/Land_and_Ocean_LatLong1.nc
+
+    url = "https://berkeley-earth-temperature.s3.us-west-1.amazonaws.com/Global/Gridded/Land_and_Ocean_LatLong1.nc"
+
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    print("Downloading dataset...")
+    urllib.request.urlretrieve(url, file_path)
+    print("Download complete.")
+
+modern_temperature_grid = nc.Dataset(file_path, mode="r")
 """
 print(dataset) outputs
 root group (NETCDF4 data model, file format HDF5):

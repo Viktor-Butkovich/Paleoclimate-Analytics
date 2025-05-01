@@ -88,6 +88,7 @@ Try out xgboost
 Replace engineered squared features with R's polynomial functionality
 Try out DBT as a way to share the code platform-independently
 Add baseline SARIMAX (or ARIMAX) model
+Look into graph neural networks - looks effective for finding relationships between features
 
 Installing PyTorch with CUDA GPU acceleration enabled:
     pip3 install --user torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128

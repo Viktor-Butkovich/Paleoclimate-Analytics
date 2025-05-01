@@ -21,12 +21,16 @@ elif config["db_mode"] == "sqlite":
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 data: data_types.Temp12k_data = pkl.load(open("../Data/Temp12k_v1_0_0.pkl", "rb"))
+
+"""
+# Initial EDA
 # The data has "TS" and "D" sections
 json.dump(data["TS"][0], open("../Data/raw/example_ts_sample.json", "w"))
 json.dump(
     data["D"][next(iter(data["D"].keys()))],
     open("../Data/raw/example_d_sample.json", "w"),
 )
+"""
 # A D sample seems to have a collection of data types (temperature, age, depth, material, sensorSpecies, etc.) - tracks all variables over time from a particular study
 # A TS sample seems to have a single data type (temperature, depth, etc.) paired with age - tracks a single variable over time from a particular study
 # For our purposes, we should isolate the TS samples that contain relevant data types
@@ -157,8 +161,10 @@ for sample in data["TS"]:
     #   C37.concentration: set of compounds produced by algae, used to estimate past sea surface temperatures
 # The data samples include various units such as m (meters), degC (degrees Celsius), kelvin, etc.
 #   We want to find samples regarding temperature
+"""
 json.dump(temperature_data, open("../Data/raw/temperature_data.json", "w"))
 json.dump(rewritten_samples, open("../Data/raw/anomaly_outlier_samples.json", "w"))
+"""
 # We have 1506 samples with temperature data, each of which is a time series to ~20,000 years BP
 # Temperature sample 0 tracks degC temperature from ages 500 to 22,260 years BP
 # As shown in the below plot, this sample was taken near the east coast of the Arabian Peninsula
