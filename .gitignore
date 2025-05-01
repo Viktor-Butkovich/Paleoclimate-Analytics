@@ -163,7 +163,7 @@ cython_debug/
 *.xlsx
 *.pkl
 *.pbix
-Rplots.pdf
+*.pdf
 Data/*
 evolution_progress/*
 lightning_logs/*

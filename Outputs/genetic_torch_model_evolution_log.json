@@ -50,6 +50,11 @@
         "description": "    Layer Configuration: 18 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64]\n        epochs: 311\n        patience: 32\n        adam_lr: 0.07052\n        regularization_lambda: 0.00231\n    Average Validation Loss: 1.9333"
     },
     {
+        "generation": 20,
+        "fitness": 1.933318316936493,
+        "description": "    Layer Configuration: 18 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64]\n        epochs: 311\n        patience: 32\n        adam_lr: 0.07052\n        regularization_lambda: 0.00231\n    Average Validation Loss: 1.9333"
+    },
+    {
         "generation": -1,
         "fitness": 1.3135317653417586,
         "description": "    Layer Configuration: 18 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64]\n        epochs: 3110\n        patience: 32\n        adam_lr: 0.07052\n        regularization_lambda: 0.00231\n    Average Validation Loss: 1.3135"

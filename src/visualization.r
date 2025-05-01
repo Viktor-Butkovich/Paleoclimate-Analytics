@@ -9,6 +9,7 @@ suppressPackageStartupMessages({
 options(warn = -1) # Suppress warnings
 config <- fromJSON(here("prediction_config.json"))
 scoreboard <- fromJSON(here("Outputs", "scoreboard.json"))
+evolution_log <- fromJSON(here("Outputs", "genetic_torch_model_evolution_log.json"))
 
 anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view.csv")) %>% filter(year_bin <= 2025)
 # Preprocessed, normalized, missing values interpolated, etc. with constant frequency
@@ -280,5 +281,30 @@ for (prediction_type in c(
 )) {
     plot_predictions(prediction_type)
 }
+
+generations_fitness_df <- evolution_log %>%
+    select(generation, fitness) %>%
+    filter(generation >= 0) %>%
+    mutate(fitness = fitness)
+ggplot(generations_fitness_df, aes(x = generation, y = fitness)) +
+    geom_line(color = "blue", linewidth = 1.2) +
+    labs(x = "Generation", y = "Fitness (MSE)", title = "Fitness vs Generation") +
+    theme_classic()
+ggsave(here("Outputs", "genetic_torch_model_evolution_progress.png"), width = 10, height = 6)
+
+scoreboard_df <- as.data.frame(scoreboard) %>%
+    pivot_longer(cols = everything(), names_to = "model", values_to = "mse") %>%
+    mutate(model = str_replace_all(model, "_", " ")) %>%
+    mutate(model = str_to_title(model)) %>%
+    mutate(model = reorder(model, mse, decreasing = TRUE))
+
+ggplot(scoreboard_df, aes(x = model, y = mse, fill = model)) +
+    geom_bar(stat = "identity") +
+    labs(x = "Model", y = "Validation MSE", title = "Validation MSE by Model") +
+    theme_classic() +
+    # theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_brewer(palette = "Set3")
+
+ggsave(here("Outputs", "validation_mse_by_model.png"), width = 10, height = 6)
 
 print("Plots saved successfully")

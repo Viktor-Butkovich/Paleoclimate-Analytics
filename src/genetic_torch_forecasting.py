@@ -521,6 +521,9 @@ for generation in range(num_generations):
 
 # %%
 # Identify best individual
+evolution_log.append(
+    best_individual.to_log(num_generations)
+)  # Log best individual at last generation
 print(f"Best individual after evolution ({k_folds} folds): \n{best_individual}")
 print()
 
