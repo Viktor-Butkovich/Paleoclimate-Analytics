@@ -185,48 +185,86 @@ ggsave(here("Outputs", "long_term_solar_modulation_plot.png"), solar_modulation_
 
 plot_predictions <- function(prediction_type) {
     file_path_base <- here("Outputs", paste(prediction_type, "_predictions", sep = ""))
-    data <- read.csv(here(paste(file_path_base, ".csv", sep = "")))
+    if (prediction_type == "default") {
+        data <- read.csv(here("Outputs", "long_term_global_anomaly_view.csv")) %>% filter(year_bin <= config$forecast_end)
+    } else {
+        data <- read.csv(here(paste(file_path_base, ".csv", sep = ""))) %>% filter(year_bin <= config$forecast_end)
+    }
 
     present_line <- config$present # Include these in a shared configuration file rather than hardcoding
-    prediction_line <- 200000
-    train1_bounds <- c(min(data$year_bin), -500000)
-    test_bounds <- c(-500000, -300000)
-    train2_bounds <- c(-300000, present_line)
-    forecast_bounds <- c(present_line, prediction_line)
+    train1_bounds <- c(min(data$year_bin), config$test_start)
+    test_bounds <- c(config$test_start, config$test_end)
+    train2_bounds <- c(config$test_end, present_line)
+    forecast_bounds <- c(present_line, config$forecast_end)
     data <- data %>% mutate(anomaly = ifelse(year_bin > present_line, NA, anomaly)) # Set future anomalies to null for plotting
-    if (grepl("arima", file_path_base)) {
-        data <- data %>% mutate(pred_anomaly = ifelse(year_bin > present_line, pred_anomaly, NA)) # Set past anomalies to null for plotting - trivial predictions
-        test_split_layers <- list(
-            annotate("text", x = mean(c(train1_bounds[1], train2_bounds[2])), y = -10, label = "Train", hjust = 0.5, color = "black")
-        ) # Pure forecasting methods don't have a train/test split
+    extra_layers <- list()
+    if (prediction_type == "default") {
+        extra_layers <- c(
+            extra_layers,
+            list(
+                labs(
+                    x = "Year",
+                    y = "Anomaly (°C)",
+                    color = "Legend",
+                    title = "Climate Anomaly by Year",
+                )
+            )
+        )
     } else {
-        test_split_layers <- list(
-            annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey"),
-            annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black"),
-            annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
-            annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
-            labs(caption = paste("Validation MSE: ", scoreboard[[prediction_type]], sep = ""))
+        extra_layers <- c(
+            extra_layers,
+            list(
+                labs(
+                    x = "Year",
+                    y = "Anomaly (°C)",
+                    color = "Legend",
+                    title = paste(str_to_title(str_replace_all(prediction_type, "_", " ")), " Predictions - Actual and Predicted Climate Anomaly by Year", sep = "")
+                ),
+                geom_line(aes(x = year_bin, y = data$pred_anomaly, color = "Predicted Anomaly"))
+            )
         )
     }
+
+    if (grepl("arima", file_path_base)) {
+        data <- data %>% mutate(pred_anomaly = ifelse(year_bin > present_line, pred_anomaly, NA)) # Set past anomalies to null for plotting - trivial predictions
+        extra_layers <- c(
+            extra_layers,
+            list(
+                annotate("text", x = mean(c(train1_bounds[1], train2_bounds[2])), y = -10, label = "Train", hjust = 0.5, color = "black")
+            ) # Pure forecasting methods don't have a train/test split
+        )
+    } else {
+        extra_layers <- c(
+            extra_layers,
+            list(
+                annotate("rect", xmin = test_bounds[1], xmax = test_bounds[2], ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey"),
+                annotate("text", x = mean(test_bounds), y = -10, label = "Test", hjust = 0.5, color = "black"),
+                annotate("text", x = mean(train1_bounds), y = -10, label = "Train", hjust = 0.5, color = "black"),
+                annotate("text", x = mean(train2_bounds), y = -10, label = "Train", hjust = 0.5, color = "black")
+            )
+        )
+        if (prediction_type != "default") {
+            extra_layers <- c(
+                extra_layers,
+                list(
+                    labs(caption = paste("Validation MSE: ", scoreboard[[prediction_type]], sep = ""))
+                )
+            )
+        }
+    }
+
     ggplot(data, aes(x = year_bin)) +
         geom_line(aes(y = anomaly, color = "Actual Anomaly")) +
-        geom_line(aes(y = pred_anomaly, color = "Predicted Anomaly")) +
-        labs(
-            x = "Year",
-            y = "Anomaly (°C)",
-            color = "Legend",
-            title = paste(str_to_title(str_replace_all(prediction_type, "_", " ")), " Predictions - Actual and Predicted Climate Anomaly by Year", sep = "")
-        ) +
+        extra_layers +
         theme_classic() +
         scale_y_continuous(limits = c(-10, 4), breaks = seq(-10, 4, by = 2)) +
         scale_x_continuous(labels = label_number(scale_cut = cut_short_scale()), breaks = seq(ceiling(min(data$year_bin) / 100000) * 100000, max(data$year_bin), by = 100000)) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
         annotate("text", x = -Inf, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#df00a7") +
         annotate("rect", xmin = present_line, xmax = max(data$year_bin), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#889AFF") +
-        annotate("text", x = mean(forecast_bounds), y = -10, label = "Forecast", hjust = 0.5, color = "black") +
-        test_split_layers +
         geom_vline(xintercept = present_line, linetype = "dotted", color = "blue") +
-        annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black")
+        annotate("text", x = present_line, y = 3, label = "Present", hjust = 1.1, color = "black") +
+        annotate("text", x = mean(forecast_bounds), y = -10, label = "Forecast", hjust = 0.5, color = "black")
     ggsave(here("Outputs", paste(prediction_type, "_predictions.png", sep = "")), width = 10, height = 6)
 }
 
@@ -237,7 +275,8 @@ for (prediction_type in c(
     "torch_model",
     "genetic_torch_model",
     "arima_model",
-    "arimax_model"
+    "arimax_model",
+    "default"
 )) {
     plot_predictions(prediction_type)
 }

@@ -17,7 +17,6 @@ from modules import constants
 from typing import Dict, List, Any
 import numpy as np
 import json
-import os
 
 # %%
 # Load the dataset
@@ -451,8 +450,8 @@ def sort_population(population: List[Individual]) -> List[Individual]:
 # Train the neural networks
 
 k_folds = 2
-mutation_rate = 0.5
-recombination_rate = 0.5
+mutation_rate = 0.8
+recombination_rate = 0.8
 population_size = 20
 num_generations = 20
 
@@ -464,6 +463,7 @@ default_individual = Individual(genome=None)
 default_individual.evaluate(kf)
 print(f"Default individual: \n{default_individual}")
 
+evolution_log = []
 population = [
     Individual(
         genome={
@@ -484,6 +484,7 @@ population = [
 print(f"Generation 0: Evaluating {population_size} initial individuals")
 population = evaluate_population(population, kf)
 best_individual = sort_population(population)[0]
+evolution_log.append(best_individual.to_log(0))
 print(f"0 generation best individual: \n\n {best_individual}")
 print()
 
@@ -512,6 +513,7 @@ for generation in range(num_generations):
     ]  # Keep only the best half of the population
     if best_individual != population[0]:
         best_individual = population[0]
+        evolution_log.append(best_individual.to_log(generation + 1))
         print(f"Generation {generation + 1} best individual: \n{population[0]}")
     else:
         print(f"Generation {generation + 1} has the same best individual")
@@ -542,6 +544,9 @@ print()
 retrained_default_individual = Individual(genome=deepcopy(default_individual.genome))
 retrained_default_individual.genome[constants.EPOCHS] *= 10
 retrained_default_individual.evaluate(prediction_kf)
+evolution_log.append(
+    retrained_best_individual.to_log(-1)
+)  # Special re-evaluation generation
 print(
     f"Retrained default individual on {prediction_k_folds} folds, x10 epochs: \n{retrained_default_individual}"
 )
@@ -578,7 +583,6 @@ end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
 print("Saved predictions to csv")
 
-# %%
 # Update scoreboard.json with the best individual's fitness
 scoreboard_path = "../Outputs/scoreboard.json"
 
@@ -598,5 +602,11 @@ with open(scoreboard_path, "w") as f:
 print(
     f"Updated {scoreboard_path} with genetic_torch_model fitness: {retrained_best_individual.fitness:.5f}"
 )
+
+evolution_log_path = "../Outputs/genetic_torch_model_evolution_log.json"
+with open(evolution_log_path, "w") as f:
+    json.dump(evolution_log, f, indent=4)
+print(f"Updated {evolution_log_path} with evolution history log")
+
 
 # %%

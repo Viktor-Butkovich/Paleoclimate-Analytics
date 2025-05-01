@@ -1,0 +1,57 @@
+[
+    {
+        "generation": 0,
+        "fitness": 2.590139389038086,
+        "description": "    Layer Configuration: 18 -> 32 -> 32 -> 32 -> 1\n    Hyperparameters:\n        layer_sizes: [32, 32, 32]\n        epochs: 197\n        patience: 11\n        adam_lr: 0.03526\n        regularization_lambda: 0.00926\n    Average Validation Loss: 2.5901"
+    },
+    {
+        "generation": 1,
+        "fitness": 2.5635849237442017,
+        "description": "    Layer Configuration: 18 -> 4 -> 8 -> 8 -> 1\n    Hyperparameters:\n        layer_sizes: [4, 8, 8]\n        epochs: 170\n        patience: 8\n        adam_lr: 0.0222\n        regularization_lambda: 0.01604\n    Average Validation Loss: 2.5636"
+    },
+    {
+        "generation": 2,
+        "fitness": 2.4504579305648804,
+        "description": "    Layer Configuration: 18 -> 64 -> 64 -> 32 -> 32 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64, 32, 32]\n        epochs: 215\n        patience: 22\n        adam_lr: 0.0111\n        regularization_lambda: 0.00463\n    Average Validation Loss: 2.4505"
+    },
+    {
+        "generation": 3,
+        "fitness": 2.3593132495880127,
+        "description": "    Layer Configuration: 18 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64]\n        epochs: 179\n        patience: 20\n        adam_lr: 0.02982\n        regularization_lambda: 0.00802\n    Average Validation Loss: 2.3593"
+    },
+    {
+        "generation": 4,
+        "fitness": 2.23784601688385,
+        "description": "    Layer Configuration: 18 -> 128 -> 128 -> 1\n    Hyperparameters:\n        layer_sizes: [128, 128]\n        epochs: 179\n        patience: 22\n        adam_lr: 0.02982\n        regularization_lambda: 0.00802\n    Average Validation Loss: 2.2378"
+    },
+    {
+        "generation": 6,
+        "fitness": 2.1557196378707886,
+        "description": "    Layer Configuration: 18 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64]\n        epochs: 145\n        patience: 24\n        adam_lr: 0.05964\n        regularization_lambda: 0.00401\n    Average Validation Loss: 2.1557"
+    },
+    {
+        "generation": 7,
+        "fitness": 2.1288485527038574,
+        "description": "    Layer Configuration: 18 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64]\n        epochs: 234\n        patience: 22\n        adam_lr: 0.11928\n        regularization_lambda: 0.00231\n    Average Validation Loss: 2.1288"
+    },
+    {
+        "generation": 9,
+        "fitness": 2.052656412124634,
+        "description": "    Layer Configuration: 18 -> 128 -> 128 -> 1\n    Hyperparameters:\n        layer_sizes: [128, 128]\n        epochs: 257\n        patience: 29\n        adam_lr: 0.03526\n        regularization_lambda: 0.00462\n    Average Validation Loss: 2.0527"
+    },
+    {
+        "generation": 11,
+        "fitness": 2.0335347652435303,
+        "description": "    Layer Configuration: 18 -> 256 -> 32 -> 64 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [256, 32, 64, 64, 64]\n        epochs: 177\n        patience: 24\n        adam_lr: 0.01491\n        regularization_lambda: 0.00401\n    Average Validation Loss: 2.0335"
+    },
+    {
+        "generation": 15,
+        "fitness": 1.933318316936493,
+        "description": "    Layer Configuration: 18 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64]\n        epochs: 311\n        patience: 32\n        adam_lr: 0.07052\n        regularization_lambda: 0.00231\n    Average Validation Loss: 1.9333"
+    },
+    {
+        "generation": -1,
+        "fitness": 1.3135317653417586,
+        "description": "    Layer Configuration: 18 -> 64 -> 64 -> 1\n    Hyperparameters:\n        layer_sizes: [64, 64]\n        epochs: 3110\n        patience: 32\n        adam_lr: 0.07052\n        regularization_lambda: 0.00231\n    Average Validation Loss: 1.3135"
+    }
+]
