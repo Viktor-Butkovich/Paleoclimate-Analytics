@@ -1,100 +1,43 @@
-# Paleoclimate Analytics Project
- 
-Study on the Earth's climate in the last million years
-
-Temperature anomaly since 1 million years ago:
-![Long Term Temperature Anomaly](Outputs/long_term_temperature_anomaly.png)
-
-Note the very similar patterns of carbon dioxide levels over the last million years:
-![Long Term CO2 Levels](Outputs/long_term_co2_ppm.png)
-
-Comparison of variations in orbital "wobble" with carbon dioxide levels and climate anomaly:
-![Orbital parameters vs CO2 vs Temperature](Outputs/orbital_parameters_glacial_cycles_trends.png)
+To run locally, clone the repository and perform the following:
+1. Install `Python 3`, `pip`, and `R`
+2. Using `pip`, set up a virtual environment and install the packages in `requirements.txt` to set up the Python environment.
+3. Run `Rscript install_packages.r` to set up the R environment.
+4. To run the entire pipeline, run `./src/orchestrator.bat` (Windows) or `./src/orchestrator.sh` (Linux) from the root directory of the repository. This will:
+    - Pull remaining data that doesn't fit in the repository
+    - Creates a local SQLite database to act as a data warehouse
+    - Runs the ETL pipeline:
+        - Extract Holocene to modern temperature measurements, long-term climate, CO2 and Beryllium-10 concentrations, geomagnetic field intensity, and simulated orbital parameters
+        - Transform the data into a common format for analysis
+        - Load the data to populate the SQLite data warehouse
+    - Creates views from the data warehouse for different analyses:
+        - `raw_global_anomaly_view.csv`: Full, globally aggregated data with high resolution, original units, and missing values
+            - Used for visualization in original form
+        - `long_term_global_anomaly_view.csv`: Globally aggregated data in the train/test/forecast window with low, even resolution, no missing values, and in standardized units
+            - Used for visualization where missing values are not desired
+        - `long_term_global_anomaly_view_enriched_training.csv`: Globally aggregated data in the train/test/forecast window with low, even resolution, no missing values, and in standardized units, with engineered features
+            - Used for machine learning
+    - Performs linear regression:
+        - `linear_model`: Uses linear regression with no lagged anomaly values as context (no time series elements)
+        - `linear_model_lagged`: Uses linear regression with lagged anomaly values as context (time series elements)
+    - Performs ARIMA forecasting:
+        - `arima_model`: Uses ARIMA, purely based on past anomaly values
+        - `arimax_model`: Uses ARIMA, uses both past anomaly values and other features
+    - Performs Torch neural network forecasting:
+        - `torch_model`: Uses Torch neural network with manually configured hyperparameters
+        - `genetic_torch_model`: Uses torch neural network with hyperparameters optimized with a genetic algorithm
+5. Alternatively, use `orchestrator_no_etl` to only perform the steps after view creation, using saved ETL outputs from the repository.
 
 Temperature anomaly since 12,000 BC:
 ![Since Ice Age Temperature Anomaly](Outputs/since_ice_age_temperature_anomaly.png)
 
-Temperature anomaly since 1850:
-![Modern Temperature Anomaly](Outputs/modern_temperature_anomaly_forecast.png)
+Temperature anomaly since 800,000 BC:
+![Long Term Temperature Anomaly](Outputs/long_term_temperature_anomaly.png)
 
-Estimated forecast of temperature anomaly:
-![Temperature Anomaly Forecast](Outputs/torch_model_predictions.png)
+Interactions between anomaly and orbital parameters:
+![Orbital parameters interactions](Outputs/orbital_parameters_glacial_cycles_trends.png)
 
-Research AGGI Index:
-https://gml.noaa.gov/aggi/aggi.html
+Forecasting results by model:
+![Forecasting results](Outputs/validation_mse_by_model.png)
 
-CO2 levels in past 11,000 years dataset:
-https://daac.ornl.gov/cgi-bin/dsviewer.pl?ds_id=1382
-
-More CO2 level datasets:
-https://www.ncei.noaa.gov/access/paleo-search/
-
-Milankovitch Cycles dataset:
-http://www.climatedata.info/forcing/data-downloads/
-
-Milankovitch Simulator:
-https://biocycle.atmos.colostate.edu/shiny/Milankovitch/
-
-Modern CO2 levels dataset:
-https://gml.noaa.gov/ccgg/trends/gl_data.html
-
-2024 mean CO2 level:
-https://www.statista.com/statistics/1091999/atmospheric-concentration-of-co2-historic/
-
-Article about Milankovitch Cycles:
-https://science.nasa.gov/science-research/earth-science/milankovitch-orbital-cycles-and-their-role-in-earths-climate/
-    Notably, the effects of axial and apsidal precession have 23000 year cycles, and may be the cause of lots of the "noise" in the data
-        May benefit from increasing data resolution to better capture such cycles
-
-https://onlinelibrary.wiley.com/doi/full/10.1155/2014/345482?msockid=00f9caf6c69469371ab8dbfbc73c68e1
-^ Notes that cosmic ray flux is a significant factor in glaciation - affects albedo from low-cloud cover
-Predicting delta anomaly is important, because it is indicative of positive feedback loops in either direction - very powerful
-
-Cosmic flux dataset search:
-https://www.ncei.noaa.gov/access/paleo-search
-https://www.ncei.noaa.gov/products/space-weather/legacy-data/cosmic-ray
-https://www.ncei.noaa.gov/access/paleo-search/study/search.json?searchText=cosmic&dataPublisher=NOAA&headersOnly=true
-https://www.sciencedirect.com/science/article/abs/pii/S0277379197000899
-https://www.sciencedirect.com/science/article/abs/pii/S0277379110002118
-https://www.sciencedirect.com/science/article/abs/pii/S0277379124004943
-
-Look into magnetic data gathered by J Masarik
-https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/1998JD200091
-https://www.sciencedirect.com/science/article/pii/S0012821X02005162?via%3Dihub (sources)
-https://www.sciencedirect.com/science/article/pii/S0012821X02005162?via%3Dihub
-^ SINT-800 Dataset: https://doi.pangaea.de/10.1594/PANGAEA.132703
-Finally found a copy of SINT-2000 from https://academic.oup.com/gji/article/231/1/520/6595302 (Linked GitHub for Data Availability, extracted data from .mat file)
-
-
-Search beryllium on https://www.ncei.noaa.gov/access/paleo-search/
-
-Beryllium-10 dataset:
-https://doi.pangaea.de/10.1594/PANGAEA.743344
-
-Possibly incorporate recent GHG index data
-Attempt at least ARIMAX, Linear Regression-based, and NHITS forecasting models in different possible future scenarios
-    Possibly also include a basic TensorFlow neural network and use an evolutionary algorithm for hyperparameter optimization
-Also look into using smoothed variables with s() to reduce noise and for easier plotting
-    s(variable) returns a smoothed version - from the mgcv package
-    Try a GAM - generalized additive model, allows a linear response variable to depend linearly on predictor variables
-        Simple method of time series prediction with future exogenous variables
-    Try diff-based regression, using changes in each variable to predict change in anomaly, rather than absolute amounts
-    Try out a gradient-boosted tree regressor and an xgboost regressor
-    This guide looks very helpful for time series validation: https://towardsdatascience.com/model-validation-techniques-for-time-series-3518269bd5b3/
-
-Figure out what Adam optimizer does
-Try GLM as opposed to LM
-Try out xgboost
-Replace engineered squared features with R's polynomial functionality
-Try out DBT as a way to share the code platform-independently
-Add baseline SARIMAX (or ARIMAX) model
-Look into graph neural networks - looks effective for finding relationships between features
-
-Installing PyTorch with CUDA GPU acceleration enabled:
-    pip3 install --user torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-
-Benchmarks:
-GPU with parallel processing of folds: 60 seconds
-GPU with sequential processing of folds: 67 seconds
-CPU with parallel processing of folds: 99 seconds
-CPU with sequential processing of folds: 44 seconds
+Best results (genetically optimized Torch neural network model):
+![Genetic torch model predictions](Outputs/genetic_torch_model_predictions.png)
