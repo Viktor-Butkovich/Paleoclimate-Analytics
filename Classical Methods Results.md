@@ -22,9 +22,6 @@ To run locally, clone the repository and perform the following:
     - Performs ARIMA forecasting:
         - `arima_model`: Uses ARIMA, purely based on past anomaly values
         - `arimax_model`: Uses ARIMA, uses both past anomaly values and other features
-    - Performs Torch neural network forecasting:
-        - `torch_model`: Uses Torch neural network with manually configured hyperparameters
-        - `genetic_torch_model`: Uses torch neural network with hyperparameters optimized with a genetic algorithm
 5. Alternatively, use `orchestrator_no_etl` to only perform the steps after view creation, using saved ETL outputs from the repository.
 
 Recent temperature anomaly:
@@ -39,8 +36,14 @@ Temperature anomaly since 800,000 BC:
 Interactions between anomaly and orbital parameters:
 ![Orbital parameters interactions](Outputs/orbital_parameters_glacial_cycles_trends.png)
 
-Forecasting results by model:
-![Forecasting results](Outputs/validation_mse_by_model.png)
+Linear model results:
+![Linear Model](Outputs/linear_model_predictions.png)
 
-Best results (genetically optimized Torch neural network model):
-![Genetic torch model predictions](Outputs/genetic_torch_model_predictions.png)
+Lagged Linear model results:
+![Lagged Linear Model](Outputs/linear_model_predictions.png)
+
+ARIMA model results:
+![ARIMA Model](Outputs/arima_model_predictions.png)
+
+ARIMAX model results:
+![ARIMAX Model](Outputs/arimax_model_predictions.png)
