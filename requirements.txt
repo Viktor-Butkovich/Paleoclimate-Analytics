@@ -1,0 +1,8 @@
+sqlalchemy
+netCDF4
+numpy
+polars
+torch
+scikit-learn
+scipy
+pandas

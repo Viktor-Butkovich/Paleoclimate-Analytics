@@ -302,7 +302,6 @@ ggplot(scoreboard_df, aes(x = model, y = mse, fill = model)) +
     geom_bar(stat = "identity") +
     labs(x = "Model", y = "Validation MSE", title = "Validation MSE by Model") +
     theme_classic() +
-    # theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     scale_fill_brewer(palette = "Set3")
 
 ggsave(here("Outputs", "validation_mse_by_model.png"), width = 10, height = 6)
