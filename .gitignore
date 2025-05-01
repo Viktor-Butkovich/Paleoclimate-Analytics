@@ -161,12 +161,12 @@ cython_debug/
 
 *.zip
 *.xlsx
-*.pkl
 *.pbix
 *.pdf
 raw_data*
 precomputed_modern_temperature.csv
 Land_and_Ocean_LatLong1.nc
+*.db
 evolution_progress/*
 lightning_logs/*
 cached_models/*

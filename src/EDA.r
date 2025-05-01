@@ -1,9 +1,9 @@
 suppressPackageStartupMessages({
-    library(tidyverse)
-    library(reshape2)
-    library(scales)
-    library(patchwork)
-    library(here)
+    suppressWarnings(library(tidyverse))
+    suppressWarnings(library(reshape2))
+    suppressWarnings(library(scales))
+    suppressWarnings(library(patchwork))
+    suppressWarnings(library(here))
 })
 options(warn = -1) # Suppress warnings
 

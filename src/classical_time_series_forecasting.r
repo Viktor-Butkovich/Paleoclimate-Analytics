@@ -1,9 +1,9 @@
 suppressPackageStartupMessages({
-    library(tidyverse)
-    library(jsonlite)
-    library(forecast)
-    library(olsrr)
-    library(here)
+    suppressWarnings(library(tidyverse))
+    suppressWarnings(library(jsonlite))
+    suppressWarnings(library(forecast))
+    suppressWarnings(library(olsrr))
+    suppressWarnings(library(here))
 })
 options(warn = -1) # Suppress warnings
 

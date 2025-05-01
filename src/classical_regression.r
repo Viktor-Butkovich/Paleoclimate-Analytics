@@ -1,9 +1,9 @@
 suppressPackageStartupMessages({
-    library(tidyverse)
-    library(olsrr)
-    library(jsonlite)
-    library(caret)
-    library(here)
+    suppressWarnings(library(tidyverse))
+    suppressWarnings(library(olsrr))
+    suppressWarnings(library(jsonlite))
+    suppressWarnings(library(caret))
+    suppressWarnings(library(here))
 })
 options(warn = -1) # Suppress warnings
 set.seed(42)

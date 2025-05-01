@@ -1,10 +1,10 @@
 suppressPackageStartupMessages({
-    library(tidyverse)
-    library(reshape2)
-    library(scales)
-    library(patchwork)
-    library(jsonlite)
-    library(here)
+    suppressWarnings(library(tidyverse))
+    suppressWarnings(library(reshape2))
+    suppressWarnings(library(scales))
+    suppressWarnings(library(patchwork))
+    suppressWarnings(library(jsonlite))
+    suppressWarnings(library(here))
 })
 options(warn = -1) # Suppress warnings
 config <- fromJSON(here("prediction_config.json"))
