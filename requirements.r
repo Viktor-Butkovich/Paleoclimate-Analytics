@@ -1,4 +1,4 @@
-packages <- c("tidyverse", "olsrr", "jsonlite", "caret", "here", "forecast", "reshape2", "scales", "patchwork")
+packages <- c("tidyverse", "olsrr", "jsonlite", "caret", "here", "forecast", "reshape2", "scales", "patchwork", "arrow")
 for (pkg in packages) {
     if (system.file(package = pkg) == "") {
         cat(paste("Installing", pkg))

@@ -5,16 +5,17 @@ suppressPackageStartupMessages({
     suppressWarnings(library(patchwork))
     suppressWarnings(library(jsonlite))
     suppressWarnings(library(here))
+    suppressWarnings(library(arrow))
 })
 options(warn = -1) # Suppress warnings
 config <- fromJSON(here("prediction_config.json"))
 scoreboard <- fromJSON(here("Outputs", "scoreboard.json"))
 evolution_log <- fromJSON(here("Outputs", "genetic_torch_model_evolution_log.json"))
 
-anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view.csv")) %>% filter(year_bin <= 2025)
+anomaly_df <- read_parquet(here("Outputs", "long_term_global_anomaly_view.parquet")) %>% filter(year_bin <= 2025)
 # Preprocessed, normalized, missing values interpolated, etc. with constant frequency
 
-anomaly_df_raw <- read.csv(here("Outputs", "raw_global_anomaly_view.csv")) %>% filter(year_bin <= 2025 & year_bin >= -700000)
+anomaly_df_raw <- read_parquet(here("Outputs", "raw_global_anomaly_view.parquet")) %>% filter(year_bin <= 2025 & year_bin >= -700000)
 # Raw data, good for actual attribute values and high-frequency time periods (recent)
 
 ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -31,6 +32,19 @@ ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly
     scale_y_continuous(limits = c(-10, 10)) +
     scale_x_continuous(labels = scales::comma)
 ggsave(here("Outputs", "long_term_temperature_anomaly.png"), width = 10, height = 6)
+
+ggplot(anomaly_df %>% filter(year_bin >= -700000 & year_bin <= -600000), aes(x = year_bin, y = anomaly, color = anomaly)) +
+    geom_line() +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "#DF00A7") +
+    annotate("text", x = -680000, y = 0, label = "Long-term Climate Average", hjust = -0.1, vjust = -0.5, color = "#DF00A7") +
+    geom_vline(xintercept = -629000, linetype = "dashed", color = "#0072F5") +
+    annotate("text", x = -619000, y = 5, label = "Most Recent\nYellowstone Eruption", vjust = -0.5, color = "#0072F5") +
+    scale_color_gradient2(low = "blue", mid = "red", high = "red", midpoint = 8, limits = c(-10, 10)) +
+    labs(x = "Year", y = "Temperature Anomaly (°C)") +
+    theme_classic() +
+    scale_y_continuous(limits = c(-10, 10)) +
+    scale_x_continuous(labels = scales::comma)
+ggsave(here("Outputs", "yellowstone_temperature_anomaly.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% filter(year_bin >= -800000), aes(x = year_bin, y = co2_ppm, color = anomaly)) +
     geom_line() +
@@ -187,9 +201,9 @@ ggsave(here("Outputs", "long_term_solar_modulation_plot.png"), solar_modulation_
 plot_predictions <- function(prediction_type) {
     file_path_base <- here("Outputs", paste(prediction_type, "_predictions", sep = ""))
     if (prediction_type == "default") {
-        data <- read.csv(here("Outputs", "long_term_global_anomaly_view.csv")) %>% filter(year_bin <= config$forecast_end)
+        data <- read_parquet(here("Outputs", "long_term_global_anomaly_view.parquet")) %>% filter(year_bin <= config$forecast_end)
     } else {
-        data <- read.csv(here(paste(file_path_base, ".csv", sep = ""))) %>% filter(year_bin <= config$forecast_end)
+        data <- read_parquet(here(paste(file_path_base, ".parquet", sep = ""))) %>% filter(year_bin <= config$forecast_end)
     }
 
     present_line <- config$present # Include these in a shared configuration file rather than hardcoding

@@ -4,10 +4,11 @@ suppressPackageStartupMessages({
     suppressWarnings(library(scales))
     suppressWarnings(library(patchwork))
     suppressWarnings(library(here))
+    suppressWarnings(library(arrow))
 })
 options(warn = -1) # Suppress warnings
 
-anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view_enriched_training.csv")) %>% filter(year_bin <= 2025)
+anomaly_df <- read_parquet(here("Outputs", "long_term_global_anomaly_view_enriched_training.parquet")) %>% filter(year_bin <= 2025)
 print(head(anomaly_df, 1))
 get_year_bin_plot <- function() {
     plot <- ggplot(anomaly_df, aes(x = year_bin, x = anomaly)) +

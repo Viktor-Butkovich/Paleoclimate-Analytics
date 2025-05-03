@@ -186,7 +186,7 @@ temperature_df = temperature_df.filter(
 # %%
 # Extract/Transform Berkeley Earth recent climate data (since 1850)
 recompute = False
-if recompute or not os.path.exists("../Data/precomputed_modern_temperature.csv"):
+if recompute or not os.path.exists("../Data/precomputed_modern_temperature.parquet"):
     array_data = modern_temperature.modern_temperature_grid.variables["temperature"][:]
     # Get the dimensions
     months, latitudes, longitudes = array_data.shape
@@ -292,9 +292,13 @@ if recompute or not os.path.exists("../Data/precomputed_modern_temperature.csv")
         pl.col("geo_meanLat").cast(pl.Int64),
         pl.col("geo_meanLon").cast(pl.Int64),
     )
-    modern_temperature_df.write_csv("../Data/precomputed_modern_temperature.csv")
+    modern_temperature_df.write_parquet(
+        "../Data/precomputed_modern_temperature.parquet"
+    )
 else:
-    modern_temperature_df = pl.read_csv("../Data/precomputed_modern_temperature.csv")
+    modern_temperature_df = pl.read_parquet(
+        "../Data/precomputed_modern_temperature.parquet"
+    )
 
 # Ensure the column order matches
 temperature_df = pl.concat(

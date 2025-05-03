@@ -36,7 +36,9 @@ else:
     print("Using CPU")
 
 full_df = (
-    pl.read_csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv")
+    pl.read_parquet(
+        "../Outputs/long_term_global_anomaly_view_enriched_training.parquet"
+    )
     .with_columns(
         pl.when(pl.col("year_bin") > config["present"])
         .then(None)
@@ -570,7 +572,7 @@ pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-pred_df.write_csv("../Outputs/genetic_torch_model_predictions.csv")
+pred_df.write_parquet("../Outputs/genetic_torch_model_predictions.parquet")
 
 default_pred_df = (
     full_df.with_columns(pl.Series("pred_anomaly", predictions))
@@ -580,11 +582,11 @@ default_pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-default_pred_df.write_csv("../Outputs/torch_model_predictions.csv")
+default_pred_df.write_parquet("../Outputs/torch_model_predictions.parquet")
 
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
-print("Saved predictions to csv")
+print("Saved predictions to parquet")
 
 # Update scoreboard.json with the best individual's fitness
 scoreboard_path = "../Outputs/scoreboard.json"

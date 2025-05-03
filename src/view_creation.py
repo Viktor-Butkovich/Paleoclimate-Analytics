@@ -89,7 +89,9 @@ round_columns(
     normalize(fact_temperature, exclude=["year_bin", "anomaly", "co2_ppm"]),
     config["anomaly_decimal_places"],
     exclude=["year_bin"],
-).sort("year_bin").write_csv("../Outputs/raw_global_anomaly_view.csv")
+).sort("year_bin").write_parquet(
+    "../Outputs/raw_global_anomaly_view.parquet",
+)
 
 # %%
 # Preprocess the data for analysis
@@ -219,7 +221,9 @@ training = (
     .with_columns(pl.col("anomaly").fill_null(0))
 )
 
-training.write_csv("../Outputs/long_term_global_anomaly_view_enriched_training.csv")
+training.write_parquet(
+    "../Outputs/long_term_global_anomaly_view_enriched_training.parquet",
+)
 
 preprocessed = preprocessed.drop(
     [
@@ -230,8 +234,8 @@ preprocessed = preprocessed.drop(
 )
 print("Finished saving preprocessed views")
 print(preprocessed)
-preprocessed.write_csv(
-    "../Outputs/long_term_global_anomaly_view.csv"
+preprocessed.write_parquet(
+    "../Outputs/long_term_global_anomaly_view.parquet"
 )  # Only contains original columns
 
 # Create an empty JSON file for the MSE scoreboard

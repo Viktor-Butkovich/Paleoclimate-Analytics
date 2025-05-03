@@ -52,5 +52,3 @@ Trace each data source to its origin, and how it might be found again
 Clean up random files in the repository
 For the future, the outputs of the predictions would go nicely in a BI application with a dashboard, scrolling, zooming, etc.
 Try analyzing maximum resolution data near the last Yellowstone eruption
-
-Before parquet changes, folder is 4.74 GB

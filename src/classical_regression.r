@@ -4,6 +4,7 @@ suppressPackageStartupMessages({
     suppressWarnings(library(jsonlite))
     suppressWarnings(library(caret))
     suppressWarnings(library(here))
+    suppressWarnings(library(arrow))
 })
 options(warn = -1) # Suppress warnings
 set.seed(42)
@@ -11,7 +12,7 @@ set.seed(42)
 # Read in the JSON configuration file
 config <- fromJSON(here("prediction_config.json"))
 
-anomaly_df <- read.csv(here("Outputs", "long_term_global_anomaly_view_enriched_training.csv")) %>%
+anomaly_df <- read_parquet(here("Outputs", "long_term_global_anomaly_view_enriched_training.parquet")) %>%
     filter(year_bin <= config$forecast_end)
 
 test_anomaly_df <- anomaly_df %>% filter(year_bin > config$present | (year_bin <= config$test_start & year_bin <= config$test_end))
@@ -73,7 +74,7 @@ linear_model_pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_csv(linear_model_pred_anomaly_df, here("Outputs", "linear_model_predictions.csv"))
+write_parquet(linear_model_pred_anomaly_df, here("Outputs", "linear_model_predictions.parquet"))
 
 
 lagged_linear_model_results <- k_fold_train_eval(lm, train_anomaly_df, k)
@@ -85,9 +86,9 @@ lagged_linear_model_pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_csv(lagged_linear_model_pred_anomaly_df, here("Outputs", "lagged_linear_model_predictions.csv"))
+write_parquet(lagged_linear_model_pred_anomaly_df, here("Outputs", "lagged_linear_model_predictions.parquet"))
 
-print("Saved predictions to csv")
+print("Saved predictions to parquet")
 
 # Update scoreboard.json with the best individual's fitness
 scoreboard_path <- here("Outputs", "scoreboard.json")
