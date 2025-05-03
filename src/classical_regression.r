@@ -74,7 +74,7 @@ linear_model_pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_parquet(linear_model_pred_anomaly_df, here("Outputs", "linear_model_predictions.parquet"))
+write.csv(linear_model_pred_anomaly_df, here("Outputs", "linear_model_predictions.csv"))
 
 
 lagged_linear_model_results <- k_fold_train_eval(lm, train_anomaly_df, k)
@@ -86,9 +86,9 @@ lagged_linear_model_pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_parquet(lagged_linear_model_pred_anomaly_df, here("Outputs", "lagged_linear_model_predictions.parquet"))
+write.csv(lagged_linear_model_pred_anomaly_df, here("Outputs", "lagged_linear_model_predictions.csv"))
 
-print("Saved predictions to parquet")
+print("Saved predictions to csv")
 
 # Update scoreboard.json with the best individual's fitness
 scoreboard_path <- here("Outputs", "scoreboard.json")

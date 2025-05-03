@@ -572,7 +572,7 @@ pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-pred_df.write_parquet("../Outputs/genetic_torch_model_predictions.parquet")
+pred_df.write_csv("../Outputs/genetic_torch_model_predictions.csv")
 
 default_pred_df = (
     full_df.with_columns(pl.Series("pred_anomaly", predictions))
@@ -582,11 +582,11 @@ default_pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-default_pred_df.write_parquet("../Outputs/torch_model_predictions.parquet")
+default_pred_df.write_csv("../Outputs/torch_model_predictions.csv")
 
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
-print("Saved predictions to parquet")
+print("Saved predictions to csv")
 
 # Update scoreboard.json with the best individual's fitness
 scoreboard_path = "../Outputs/scoreboard.json"

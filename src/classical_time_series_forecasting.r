@@ -35,7 +35,7 @@ pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_parquet(pred_anomaly_df, here("Outputs", "arima_model_predictions.parquet"))
+write.csv(pred_anomaly_df, here("Outputs", "arima_model_predictions.csv"))
 
 
 train_anomaly_exog_df <- anomaly_df %>%
@@ -78,6 +78,6 @@ pred_anomaly_df <- anomaly_df %>%
         pred_anomaly = round(pred_anomaly, config$anomaly_decimal_places)
     ) %>%
     select(year_bin, anomaly, pred_anomaly)
-write_parquet(pred_anomaly_df, here("Outputs", "arimax_model_predictions.parquet"))
+write.csv(pred_anomaly_df, here("Outputs", "arimax_model_predictions.csv"))
 
-print("Saved predictions to parquet")
+print("Saved predictions to csv")

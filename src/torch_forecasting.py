@@ -37,7 +37,9 @@ else:
     print("Using CPU")
 
 full_df = (
-    pl.read_parquet("../Outputs/long_term_global_anomaly_view_enriched_training.parquet")
+    pl.read_parquet(
+        "../Outputs/long_term_global_anomaly_view_enriched_training.parquet"
+    )
     .with_columns(
         pl.when(pl.col("year_bin") > config["present"])
         .then(None)
@@ -248,11 +250,11 @@ pred_df = (
         pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
     )
 )
-pred_df.write_parquet("../Outputs/torch_model_predictions.parquet")
+pred_df.write_csv("../Outputs/torch_model_predictions.csv")
 
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
-print("Saved predictions to parquet")
+print("Saved predictions to csv")
 
 # %%
 # Update scoreboard.json with the MSE
