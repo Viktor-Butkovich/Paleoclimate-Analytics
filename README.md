@@ -1,3 +1,5 @@
+Seeking to understand, visualize, and predict long-term climate patterns, particularly ice ages, with neural networks, genetic algorithms, and classical statistical methods
+
 To run locally, clone the repository and perform the following:
 1. Install `Python 3`, `pip`, and `R`
 2. Using `pip`, set up a virtual environment and install the packages in `requirements.txt` to set up the Python environment.
