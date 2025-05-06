@@ -171,3 +171,4 @@ lightning_logs/*
 cached_models/*
 Outputs/EDA_plot.png
 deprecated/old*
+Outputs/genome_cache.json

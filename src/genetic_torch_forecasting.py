@@ -17,6 +17,7 @@ from modules import constants
 from typing import Dict, List, Any
 import numpy as np
 import json
+import os
 
 # %%
 # Load the dataset
@@ -25,6 +26,12 @@ torch.backends.cudnn.benchmark = False
 seed = 42
 
 config = json.load(open("../prediction_config.json"))
+
+genome_cache_path = "../Outputs/genome_cache.json"
+if os.path.exists(genome_cache_path):
+    genome_cache = json.load(open(genome_cache_path))
+else:
+    genome_cache = {}
 
 device = None
 if config["gpu"] and torch.cuda.is_available():
@@ -273,14 +280,21 @@ class Individual:
                 constants.ADAM_LR: 0.001,
                 constants.REGULARIZATION_LAMBDA: 0.05,
             }
-        self.fitness: float = None
+        self.model_string = self.to_model_string()
         self.state_dicts: List[Dict[str, Any]] = []
+        self.fitness: float = None
+        if (
+            genome_cache.get(self.model_string) is not None
+        ):  # Since fitness function is a 1-1 mapping from genome to fitness, we can re-use already evaluated genomes
+            self.fitness = genome_cache[self.model_string]
 
-    def evaluate(self, kf: KFold) -> None:
+    def evaluate(self, kf: KFold, retrain: bool = False) -> None:
         # Save the current random state
         saved_random_state = save_random_state()
         restart_random_state()  # A particular genome should always have a deterministic result
-        if self.fitness is None:  # No need to re-evaluate
+        if (
+            retrain or self.fitness is None
+        ):  # No need to re-evaluate if just conducting evolution with fitness
             self.state_dicts = []
             if config["parallel"]:
                 with ThreadPoolExecutor() as executor:
@@ -317,6 +331,9 @@ class Individual:
                     fold_train_results.append(result[constants.TRAIN_LOSS])
                     self.state_dicts.append(result[constants.MODEL].state_dict())
             self.fitness = np.mean(fold_results) - self.get_complexity_penalty()
+            genome_cache[self.model_string] = self.fitness
+        else:
+            print("Reusing cached genome")
         # Reset the random state at the end to avoid side effects
         restore_random_state(saved_random_state)
 
@@ -428,6 +445,9 @@ class Individual:
             "description": str(self),
         }
 
+    def to_model_string(self) -> str:
+        return "".join(f"{key}_{value}_" for key, value in self.genome.items())
+
 
 def evaluate_population(
     population: List[Individual], kf: KFold, verbosity: int = 1
@@ -535,20 +555,24 @@ print()
 prediction_k_folds = 10  # (Optionally) retrain with more folds for final evaluation
 prediction_kf = KFold(n_splits=prediction_k_folds, shuffle=True, random_state=seed)
 
-retrained_best_individual = Individual(genome=deepcopy(best_individual.genome))
-retrained_best_individual.genome[
+retrained_best_individual_genome = deepcopy(best_individual.genome)
+retrained_best_individual_genome[
     constants.EPOCHS
 ] *= 10  # (Optionally) retrain with more epochs for final evaluation
-retrained_best_individual.evaluate(prediction_kf)
+retrained_best_individual = Individual(genome=retrained_best_individual_genome)
+retrained_best_individual.evaluate(prediction_kf, retrain=True)
 
 print(
     f"Retrained best individual on {prediction_k_folds} folds, x10 epochs: \n{retrained_best_individual}"
 )
 print()
 
-retrained_default_individual = Individual(genome=deepcopy(default_individual.genome))
-retrained_default_individual.genome[constants.EPOCHS] *= 10
-retrained_default_individual.evaluate(prediction_kf)
+retrained_default_individual_genome = deepcopy(default_individual.genome)
+retrained_default_individual_genome[
+    constants.EPOCHS
+] *= 10  # (Optionally) retrain with more epochs for final evaluation
+retrained_default_individual = Individual(genome=retrained_default_individual_genome)
+retrained_default_individual.evaluate(prediction_kf, retrain=False)
 evolution_log.append(
     retrained_best_individual.to_log(-1)
 )  # Special re-evaluation generation
@@ -573,16 +597,6 @@ pred_df = (
     )
 )
 pred_df.write_csv("../Outputs/genetic_torch_model_predictions.csv")
-
-default_pred_df = (
-    full_df.with_columns(pl.Series("pred_anomaly", predictions))
-    .select("year_bin", "anomaly", "pred_anomaly")
-    .with_columns(
-        pl.col("anomaly").round(config["anomaly_decimal_places"]),
-        pl.col("pred_anomaly").round(config["anomaly_decimal_places"]),
-    )
-)
-default_pred_df.write_csv("../Outputs/torch_model_predictions.csv")
 
 end_time = time.time()
 print(f"Script finished in {end_time - start_time:.2f} seconds")
@@ -613,5 +627,9 @@ with open(evolution_log_path, "w") as f:
     json.dump(evolution_log, f, indent=4)
 print(f"Updated {evolution_log_path} with evolution history log")
 
+
+with open(genome_cache_path, "w") as f:
+    json.dump(genome_cache, f, indent=4)
+print(f"Updated {genome_cache_path} with genome cache")
 
 # %%
