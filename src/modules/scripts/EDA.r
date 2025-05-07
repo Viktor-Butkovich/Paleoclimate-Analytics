@@ -1,3 +1,5 @@
+# Script for early-stage exploratory data analysis (EDA) of relationships in the dataset
+
 suppressPackageStartupMessages({
     suppressWarnings(library(tidyverse))
     suppressWarnings(library(reshape2))

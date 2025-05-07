@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import json
 import os
+import shutil
 
 # %%
 # Load the dataset
@@ -272,5 +273,10 @@ with open(scoreboard_path, "w") as f:
     json.dump(scoreboard, f, indent=4)
 
 print(f"Updated {scoreboard_path} with torch_model fitness: {avg_val_loss:.5f}")
+
+# %%
+print("Cleaning up cached models")
+shutil.rmtree(cached_models_dir)
+print(f"Deleted cached models directory: {cached_models_dir}")
 
 # %%

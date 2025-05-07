@@ -4,9 +4,13 @@ from scipy.io import loadmat
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# 1-time script to extract Sint2000 magnetic field strength dataset from .mat file
+
 # %%
 # Load the .mat file
-data = loadmat("../Data/raw/Sint2000.mat")
+data = loadmat(
+    "../Data/raw/Sint2000.mat"
+)  # Adjust path as necessary for directory structure
 
 # Access the variables in the file
 print(data.keys())  # Lists all variables in the .mat file
