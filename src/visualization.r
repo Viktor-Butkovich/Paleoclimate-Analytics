@@ -30,7 +30,8 @@ ggplot(anomaly_df %>% filter(year_bin >= -800000), aes(x = year_bin, y = anomaly
     labs(x = "Year", y = "Temperature Anomaly (°C)") +
     theme_classic() +
     scale_y_continuous(limits = c(-10, 10)) +
-    scale_x_continuous(labels = scales::comma)
+    scale_x_continuous(labels = label_number(scale_cut = cut_short_scale()), breaks = seq(ceiling(min(anomaly_df$year_bin) / 100000) * 100000, max(anomaly_df$year_bin), by = 100000)) +
+    ggtitle("Global Average Climate Anomaly by Year (to 1 MYA)")
 ggsave(here("Outputs", "long_term_temperature_anomaly.png"), width = 10, height = 6)
 
 ggplot(anomaly_df %>% filter(year_bin >= -700000 & year_bin <= -600000), aes(x = year_bin, y = anomaly, color = anomaly)) +
@@ -116,14 +117,14 @@ ggplot(anomaly_df_raw, aes(x = year_bin, y = co2_ppm, color = anomaly)) +
 ggsave(here("Outputs", "modern_co2_ppm.png"), width = 10, height = 6)
 
 ggplot(anomaly_df_raw %>% mutate(color_bin = case_when(
-    year_bin < 1850 ~ 0,
-    year_bin >= 1850 & year_bin < 1980 ~ 1,
-    year_bin >= 1980 ~ 2
+    year_bin < 1750 ~ 0,
+    year_bin >= 1750 ~ 1
 )), aes(x = co2_ppm, y = anomaly, color = factor(color_bin))) +
     geom_point(size = 2.2) +
     geom_smooth(formula = y ~ x, method = "lm", se = FALSE) +
     theme_classic() +
-    scale_color_manual(values = c("0" = "blue", "1" = "green", "2" = "red"), labels = c("Before 1850", "1850-1979", "1980-Present"))
+    scale_color_manual(values = c("0" = "blue", "1" = "red"), labels = c("Before 1750", "1750-Present"), name = NULL) +
+    labs(x = "CO2 (ppm)", y = "Temperature Anomaly (°C)")
 ggsave(here("Outputs", "anomaly_vs_co2_ppm.png"), width = 10, height = 6)
 
 group_size <- 1
@@ -137,7 +138,9 @@ glaciation_orbit_df <- anomaly_df_raw %>%
     summarise(across(everything(), mean)) %>%
     ungroup() %>%
     select(-group_number)
-glaciation_orbit_df_melted <- melt(glaciation_orbit_df, id.vars = "year_bin", variable.name = "variable", value.name = "value")
+
+glaciation_orbit_df_melted <- glaciation_orbit_df %>%
+    melt(id.vars = "year_bin", variable.name = "variable", value.name = "value")
 
 glaciation_orbit_plot <- ggplot(glaciation_orbit_df_melted %>% filter(year_bin >= -650000), aes(x = year_bin, y = value, color = variable, linetype = variable)) +
     geom_line(linewidth = 1.3) +
@@ -152,13 +155,34 @@ glaciation_orbit_plot <- ggplot(glaciation_orbit_df_melted %>% filter(year_bin >
     annotate("rect", xmin = -560000, xmax = -530000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
     annotate("rect", xmin = -650000, xmax = -620000, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "#58008b") +
     annotate("text", x = -400000, y = 1.3, label = "Pre-Illinoian Glaciations", color = "blue", vjust = 1.5) +
-    annotate("text", x = 15000, y = 1.35, label = "Holocene\nInterglacial\n(Modern)", color = "blue", vjust = 1.5) +
-    scale_linetype_manual(values = c(eccentricity = "solid", global_insolation = "solid", anomaly = "longdash", co2_ppm = "longdash")) +
-    scale_color_manual(values = c(eccentricity = "#7700ff", global_insolation = "#e5ff00", anomaly = "#ff0000", co2_ppm = "#161616")) +
+    annotate("text", x = 20000, y = 1.35, label = "Holocene\nInterglacial\n(Modern)", color = "blue", vjust = 1.3) +
+    scale_linetype_manual(
+        values = c(eccentricity = "solid", global_insolation = "solid", anomaly = "longdash", co2_ppm = "longdash"),
+        guide = "none"
+    ) +
+    # scale_color_manual(values = c(eccentricity = "#7700ff", global_insolation = "#e5ff00", anomaly = "#ff0000", co2_ppm = "#161616")) +
+    scale_color_manual(
+        values = c(
+            eccentricity = "#7700ff",
+            global_insolation = "#e5ff00",
+            anomaly = "#ff0000",
+            co2_ppm = "#161616"
+        ),
+        labels = c(
+            eccentricity = "Eccentricity",
+            global_insolation = "Global Insolation",
+            anomaly = "Climate Anomaly",
+            co2_ppm = "Carbon Dioxide"
+        )
+    ) +
     theme_classic() +
-    scale_x_continuous(labels = scales::comma) +
+    scale_x_continuous(labels = label_number(scale_cut = cut_short_scale()), breaks = seq(ceiling(min(glaciation_orbit_df_melted$year_bin) / 100000) * 100000, max(glaciation_orbit_df_melted$year_bin), by = 100000)) +
     ggtitle("Glacial Cycles Due to Orbital Variation (Pre-Industrial)") +
     coord_cartesian(xlim = c(-650000, 20000))
+
+glaciation_orbit_plot
+ggsave(here("Outputs", "orbital_parameters_glacial_cycles_trends.png"), width = 15, height = 4)
+# Add years in this format to all other plots depicting year bin on ~1 MYA scales
 
 anomaly_orbit_plot <- ggplot(glaciation_orbit_df, aes(x = eccentricity, y = anomaly, color = year_bin >= -12000)) +
     geom_point() +
@@ -174,7 +198,7 @@ anomaly_insolation_plot <- ggplot(glaciation_orbit_df, aes(x = global_insolation
     theme_classic()
 combined_plot <- glaciation_orbit_plot / (anomaly_orbit_plot | anomaly_insolation_plot)
 combined_plot
-ggsave(here("Outputs", "orbital_parameters_glacial_cycles_trends.png"), width = 15, height = 9)
+ggsave(here("Outputs", "orbital_parameters_glacial_cycles_trends_combined.png"), width = 15, height = 9)
 
 solar_modulation_plot <- ggplot(anomaly_df, aes(x = year_bin)) +
     geom_line(aes(y = rescale(solar_modulation), color = "Solar Modulation (Φ)"), linewidth = 1.2) +
@@ -203,10 +227,10 @@ plot_predictions <- function(prediction_type) {
     if (prediction_type == "default") {
         data <- read_parquet(here("Outputs", "long_term_global_anomaly_view.parquet")) %>% filter(year_bin <= config$forecast_end)
     } else {
-        data <- read_parquet(here(paste(file_path_base, ".parquet", sep = ""))) %>% filter(year_bin <= config$forecast_end)
+        data <- read.csv(here(paste(file_path_base, ".csv", sep = ""))) %>% filter(year_bin <= config$forecast_end)
     }
 
-    present_line <- config$present # Include these in a shared configuration file rather than hardcoding
+    present_line <- config$present
     train1_bounds <- c(min(data$year_bin), config$test_start)
     test_bounds <- c(config$test_start, config$test_end)
     train2_bounds <- c(config$test_end, present_line)
